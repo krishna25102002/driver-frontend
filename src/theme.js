@@ -51,4 +51,63 @@ export const shadow = {
   elevation: 3,
 };
 
+// Expose convenience references on the palette object so existing
+// screens that used C.shadow / C.card keep working.
+C.shadow = shadow;
+
+// Shared card shell
+C.card = {
+  backgroundColor: C.surface,
+  borderRadius: 20,
+  padding: 16,
+  borderWidth: 1,
+  borderColor: C.border,
+  ...shadow,
+};
+
+// Shared button treatments
+C.primaryButton = {
+  backgroundColor: C.accent,
+  borderRadius: 30,
+  paddingVertical: 14,
+  paddingHorizontal: 24,
+  alignItems: 'center',
+  justifyContent: 'center',
+  ...shadow,
+  shadowOpacity: 0.22,
+};
+
+C.outlineButton = {
+  borderWidth: 1.5,
+  borderColor: C.accent,
+  borderRadius: 30,
+  paddingVertical: 13,
+  paddingHorizontal: 24,
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+C.input = {
+  backgroundColor: C.inputBg,
+  borderRadius: 14,
+  paddingHorizontal: 14,
+  color: C.text,
+};
+
+// Typography scale (lightweight helpers)
+C.fonts = {
+  h1: { fontSize: 28, fontWeight: 'bold', color: C.text },
+  h2: { fontSize: 20, fontWeight: 'bold', color: C.text },
+  h3: { fontSize: 16, fontWeight: 'bold', color: C.text },
+  body: { fontSize: 14, color: C.textSub },
+  caption: { fontSize: 12, color: C.textMuted },
+  section: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: C.primary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+};
+
 export default C;

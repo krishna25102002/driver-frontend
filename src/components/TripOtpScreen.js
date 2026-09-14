@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,35 +6,42 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  TextInput,
+  ScrollView,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import { useRoute } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { setAuthToken, generateOtp } from '../api';
+import { useRoute, useNavigation } from '@react-navigation/native';
+import { startActionTrip, endActionTrip } from '../api';
 import { C } from '../theme';
+import { Hero, PrimaryButton, StackHeader } from './ui';
+
+const EXPIRY_MS = 5 * 60 * 1000;
 
 const TripOtpScreen = () => {
   const route = useRoute();
-  const { bookingNumber } = route.params || {};
+  const navigation = useNavigation();
+  const { bookingId, bookingNumber, purpose } = route.params || {};
+  const isEnd = purpose === 'end';
 
-  const [otp, setOtp] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [customerName, setCustomerName] = useState('Customer');
+  const [otp, setOtp] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(EXPIRY_MS / 1000);
+  const [expiresAt, setExpiresAt] = useState(null);
+  const timerRef = useRef(null);
+
+  const clearTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
 
   const loadOtp = async () => {
     try {
-      const token = await AsyncStorage.getItem('token');
-      if (token) setAuthToken(token);
-
-      const res = await generateOtp(bookingNumber);
-      const digits = String(res.data.otp).split('').map((d) => Number(d));
-      setOtp(digits);
-      if (res.data.booking?.customerId?.fullName) {
-        setCustomerName(res.data.booking.customerId.fullName);
-      }
+      setExpiresAt(Date.now() + EXPIRY_MS);
     } catch (err) {
-      console.log('OTP ERR:', err.response?.data || err);
-      Alert.alert('Error', err.response?.data?.message || 'Could not generate OTP');
+      console.log('CONFIG ERR:', err);
     } finally {
       setLoading(false);
     }
@@ -42,215 +49,250 @@ const TripOtpScreen = () => {
 
   useEffect(() => {
     loadOtp();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    clearTimer();
+    timerRef.current = setInterval(() => {
+      setSecondsLeft(prev => {
+        if (prev <= 1) {
+          clearTimer();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return clearTimer;
   }, []);
+
+  useEffect(() => {
+    if (expiresAt) setSecondsLeft(Math.max(0, Math.round((expiresAt - Date.now()) / 1000)));
+  }, [expiresAt]);
+
+  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
+  const ss = String(secondsLeft % 60).padStart(2, '0');
+
+  const handleDigitChange = text => {
+    const digits = text.replace(/\D/g, '').slice(0, 4);
+    setOtp(digits);
+  };
+
+  const handleSubmit = async () => {
+    if (!otp || otp.length !== 4) {
+      Alert.alert('Enter OTP', 'Please enter the 4-digit OTP from the customer.');
+      return;
+    }
+    if (!bookingId) {
+      Alert.alert('Error', 'Missing booking information.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const call = isEnd ? endActionTrip : startActionTrip;
+      const res = await call(bookingId, otp);
+      clearTimer();
+      Alert.alert(
+        isEnd ? 'Trip Completed' : 'Trip Started',
+        res.data?.message || 'OTP verified successfully.'
+      );
+      navigation.navigate('HomeTabs');
+    } catch (err) {
+      console.log('OTP SUBMIT ERR:', err.response?.data || err);
+      Alert.alert('Error', err.response?.data?.message || 'Could not verify OTP');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Hero Header */}
-      <View style={styles.hero}>
-        <View style={styles.lockCircle}>
-          <MaterialIcons name="lock" size={26} color="#fff" />
-        </View>
-        <Text style={styles.heroTitle}>Booking {bookingNumber}</Text>
-      </View>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <StackHeader
+          title={isEnd ? 'End Trip' : 'Start Trip'}
+          subtitle={bookingNumber || 'Booking'}
+          onBack={() => navigation.goBack()}
+        />
 
-      {/* Title */}
-      <Text style={styles.title}>Share OTP with Customer</Text>
+        {/* OTP hero strip */}
+        <Hero style={styles.hero}>
+          <View style={styles.lockCircle}>
+            <MaterialIcons name={isEnd ? 'flag' : 'directions-car'} size={28} color="#fff" />
+          </View>
+          <Text style={styles.heroTitle}>
+            Enter the {isEnd ? 'end' : 'start'} OTP
+          </Text>
+          <Text style={styles.heroSub}>
+            Ask the customer to read aloud the 4-digit {isEnd ? 'end' : 'start'} OTP
+            shown in their app.
+          </Text>
+        </Hero>
 
-      <Text style={styles.subtitle}>
-        Give this OTP to the customer.{"\n"}Trip starts once they verify it.
-      </Text>
+        {/* OTP boxes */}
+        <View style={styles.otpBox}>
+          <View style={styles.otpRow}>
+            {[0, 1, 2, 3].map(i => (
+              <View key={i} style={[styles.dotBox, otp[i] ? styles.dotBoxFilled : null]}>
+                <Text style={styles.dotDigit}>{otp[i] || ''}</Text>
+              </View>
+            ))}
+          </View>
 
-      {/* OTP Box */}
-      <View style={styles.otpBox}>
-        <Text style={styles.otpLabel}>Your Trip OTP</Text>
+          <TextInput
+            style={styles.hiddenInput}
+            value={otp}
+            onChangeText={handleDigitChange}
+            keyboardType="number-pad"
+            autoFocus
+            maxLength={4}
+            returnKeyType="done"
+            onSubmitEditing={handleSubmit}
+          />
 
-        <View style={styles.otpRow}>
           {loading ? (
-            <ActivityIndicator color={C.primary} />
-          ) : (
-            otp.map((digit, index) => (
-              <Text key={index} style={styles.otpDigit}>
-                {digit}
+            <ActivityIndicator color={C.primary} style={{ marginTop: 14 }} />
+          ) : secondsLeft > 0 && !submitting ? (
+            <View style={styles.timerPill}>
+              <MaterialIcons name="timer" size={16} color={secondsLeft < 60 ? C.danger : C.accent} />
+              <Text style={[styles.validText, secondsLeft < 60 && { color: C.danger }]}>
+                Valid for {mm}:{ss}
               </Text>
-            ))
+            </View>
+          ) : null}
+          {submitting && (
+            <ActivityIndicator color={C.primary} style={{ marginTop: 14 }} />
           )}
         </View>
 
-        <Text style={styles.validText}>Valid for 5 minutes only</Text>
-      </View>
+        <PrimaryButton
+          title={isEnd ? 'End Trip' : 'Start Trip'}
+          icon={isEnd ? 'flag' : 'directions-car'}
+          loading={submitting}
+          disabled={loading}
+          onPress={handleSubmit}
+          style={styles.submitBtn}
+        />
 
-      {/* Customer Card */}
-      <View style={styles.customerCard}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{(customerName || 'C').substring(0, 2).toUpperCase()}</Text>
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <Text style={styles.customerName}>{customerName}</Text>
-          <Text style={styles.customerType}>Customer</Text>
-        </View>
-
-        <View style={styles.statusBadge}>
-          <View style={[styles.dot, { backgroundColor: C.warning }]} />
-          <Text style={styles.statusText}>Waiting OTP</Text>
-        </View>
-      </View>
-
-      <Text style={styles.footerTip}>
-        Ask the customer to enter this OTP in their app to start the trip
-      </Text>
+        <Text style={styles.footerTip}>
+          The OTP expires after 5 minutes. Ask the customer to regenerate it if it
+          runs out.
+        </Text>
+      </ScrollView>
     </SafeAreaView>
   );
 };
+
+export default TripOtpScreen;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.bg,
+  },
+  content: {
     padding: 20,
-    alignItems: 'center',
+    paddingBottom: 40,
   },
 
-  // Hero
   hero: {
-    flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'stretch',
-    backgroundColor: C.primary,
-    borderRadius: 20,
-    padding: 18,
-    marginBottom: 24,
-    ...C.shadow,
-    shadowOpacity: 0.25,
+    paddingVertical: 26,
+    paddingHorizontal: 20,
   },
   lockCircle: {
     backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 28,
-    padding: 10,
-    marginRight: 14,
+    borderRadius: 30,
+    padding: 12,
+    marginBottom: 12,
+    zIndex: 1,
   },
   heroTitle: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-
-  // Title
-  title: {
-    color: C.text,
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
     textAlign: 'center',
+    zIndex: 1,
   },
-  subtitle: {
-    color: C.textSub,
+  heroSub: {
+    color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
-    marginVertical: 10,
-    lineHeight: 20,
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 19,
+    zIndex: 1,
   },
 
-  // OTP Box
   otpBox: {
     width: '100%',
     backgroundColor: C.surface,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: C.accentBorder,
     borderTopWidth: 3,
     borderTopColor: C.accent,
-    padding: 22,
+    padding: 26,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 18,
     ...C.shadow,
-  },
-  otpLabel: {
-    color: C.textSub,
-    marginBottom: 10,
-    fontWeight: '600',
+    shadowOpacity: 0.1,
   },
   otpRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: '82%',
+    width: '86%',
   },
-  otpDigit: {
+  dotBox: {
+    width: 58,
+    height: 62,
+    borderRadius: 14,
+    backgroundColor: C.bg,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dotBoxFilled: {
+    borderColor: C.accent,
+    backgroundColor: C.accentSoft,
+  },
+  dotDigit: {
     color: C.accent,
-    fontSize: 46,
+    fontSize: 30,
     fontWeight: 'bold',
+  },
+  hiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    height: 1,
+    width: 1,
+  },
+  timerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    backgroundColor: C.accentSoft,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
   validText: {
-    color: C.textMuted,
-    marginTop: 10,
-    fontSize: 12,
+    color: C.accent,
+    fontSize: 13,
+    fontWeight: '700',
+    marginLeft: 6,
+    letterSpacing: 0.8,
   },
 
-  // Customer Card
-  customerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: C.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 15,
-    marginTop: 30,
-    width: '100%',
+  submitBtn: {
+    marginTop: 22,
+    paddingVertical: 16,
   },
-  avatar: {
-    backgroundColor: C.primarySoft,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-    borderWidth: 1,
-    borderColor: C.primaryBorder,
-  },
-  avatarText: {
-    color: C.primaryDark,
-    fontWeight: 'bold',
-  },
-  customerName: {
-    color: C.text,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  customerType: {
-    color: C.textSub,
-    fontSize: 12,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    backgroundColor: C.accentSoft,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.accentBorder,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-    alignSelf: 'center',
-  },
-  statusText: {
-    color: C.accentDark,
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-
   footerTip: {
     color: C.textMuted,
     textAlign: 'center',
     fontSize: 12,
-    marginTop: 24,
+    marginTop: 18,
     paddingHorizontal: 20,
+    lineHeight: 18,
   },
 });
-
-export default TripOtpScreen;

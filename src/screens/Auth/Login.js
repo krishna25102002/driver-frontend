@@ -6,19 +6,21 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loginDriver, setAuthToken } from '../../api';
 import { C } from '../../theme';
+import { Hero, PrimaryButton, OutlineButton } from '../../components/ui';
 
 const Login = () => {
   const navigation = useNavigation();
   const [mobileNumber, setMobileNumber] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
     if (!mobileNumber || !password) {
@@ -46,6 +48,8 @@ const Login = () => {
           routes: [{ name: 'HomeTabs' }],
         });
       } else if (driver && driver.verificationStatus === 'Rejected') {
+        await AsyncStorage.removeItem('token');
+        setAuthToken(null);
         Alert.alert('Rejected', 'Your application was rejected by admin.');
       } else {
         navigation.reset({
@@ -62,14 +66,19 @@ const Login = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
       {/* HERO BAND */}
-      <View style={styles.hero}>
+      <Hero style={styles.hero}>
         <Text style={styles.logo}>
           Drive<Text style={styles.logoAccent}>Go</Text>
         </Text>
         <Text style={styles.partner}>Driver Partner</Text>
-      </View>
+      </Hero>
 
       {/* TITLE */}
       <Text style={styles.welcome}>Welcome back,</Text>
@@ -79,7 +88,7 @@ const Login = () => {
 
       {/* Phone Input */}
       <View style={styles.inputContainer}>
-        <Icon name="phone" size={20} color={C.primary} />
+        <Icon name="phone" size={20} color={C.accent} />
         <TextInput
           placeholder="+91 98765 43210"
           placeholderTextColor={C.textMuted}
@@ -92,39 +101,49 @@ const Login = () => {
 
       {/* Password Input */}
       <View style={styles.inputContainer}>
-        <Icon name="lock" size={20} color={C.primary} />
+        <Icon name="lock" size={20} color={C.accent} />
         <TextInput
           placeholder="Password"
           placeholderTextColor={C.textMuted}
-          secureTextEntry
+          secureTextEntry={!showPassword}
           style={styles.input}
           value={password}
           onChangeText={setPassword}
         />
+        <TouchableOpacity onPress={() => setShowPassword(s => !s)} activeOpacity={0.7}>
+          <Icon
+            name={showPassword ? 'visibility-off' : 'visibility'}
+            size={20}
+            color={C.textMuted}
+          />
+        </TouchableOpacity>
       </View>
 
       {/* Forgot Password */}
-      <TouchableOpacity onPress={() => Alert.alert('Info', 'Contact support to reset your password')}>
+      <TouchableOpacity
+        onPress={() => Alert.alert('Info', 'Contact support to reset your password')}
+      >
         <Text style={styles.forgot}>Forgot Password?</Text>
       </TouchableOpacity>
 
       {/* Login Button */}
-      <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} disabled={loading}>
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.loginText}>Login</Text>
-        )}
-      </TouchableOpacity>
+      <PrimaryButton
+        title="Login"
+        icon="login"
+        loading={loading}
+        onPress={handleLogin}
+        style={styles.loginBtn}
+      />
 
       {/* Register */}
       <Text style={styles.newDriver}>New driver?</Text>
 
-      <TouchableOpacity style={styles.registerBtn} onPress={() => navigation.navigate('Register')}>
-        <Text style={styles.registerText}>Register as Driver</Text>
-      </TouchableOpacity>
-
-    </View>
+      <OutlineButton
+        title="Register as Driver"
+        icon="person-add"
+        onPress={() => navigation.navigate('Register')}
+      />
+    </ScrollView>
   );
 };
 
@@ -134,34 +153,37 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.bg,
-    padding: 22,
-    justifyContent: 'center',
   },
+  content: {
+    padding: 22,
+    paddingTop: 60,
+    paddingBottom: 40,
+  },
+
   hero: {
-    backgroundColor: C.primary,
-    borderRadius: 22,
-    paddingVertical: 30,
     alignItems: 'center',
-    marginBottom: 24,
-    ...C.shadow,
-    shadowOpacity: 0.22,
+    paddingVertical: 32,
+    marginBottom: 28,
   },
   logo: {
     fontSize: 34,
     fontWeight: 'bold',
     color: '#fff',
+    zIndex: 1,
   },
   logoAccent: {
-    color: '#fff',
-    opacity: 0.85,
+    color: '#FFD9BC',
   },
   partner: {
     color: 'rgba(255,255,255,0.85)',
     fontWeight: '600',
+    zIndex: 1,
+    marginTop: 2,
   },
+
   welcome: {
     color: C.primary,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
     textTransform: 'uppercase',
     letterSpacing: 2,
@@ -175,60 +197,40 @@ const styles = StyleSheet.create({
   subtitle: {
     color: C.textSub,
     marginTop: 6,
-    marginBottom: 20,
+    marginBottom: 22,
   },
+
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: C.surface,
     borderRadius: 16,
     paddingHorizontal: 16,
-    marginVertical: 9,
+    marginVertical: 8,
     borderWidth: 1,
     borderColor: C.border,
+    ...C.shadow,
   },
   input: {
     flex: 1,
     color: C.text,
     marginLeft: 10,
-    padding: 14,
+    padding: 15,
   },
   forgot: {
     color: C.accent,
     textAlign: 'right',
-    marginVertical: 10,
-    fontWeight: '600',
+    marginVertical: 12,
+    fontWeight: '700',
   },
+
   loginBtn: {
-    backgroundColor: C.accent,
-    padding: 16,
-    borderRadius: 30,
-    alignItems: 'center',
-    marginTop: 12,
-    ...C.shadow,
-    shadowOpacity: 0.28,
-  },
-  loginText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
+    marginTop: 6,
+    paddingVertical: 16,
   },
   newDriver: {
     textAlign: 'center',
     color: C.textMuted,
-    marginVertical: 16,
-  },
-  registerBtn: {
-    borderColor: C.accent,
-    borderWidth: 1.5,
-    padding: 15,
-    borderRadius: 30,
-    alignItems: 'center',
-    backgroundColor: C.surface,
-  },
-  registerText: {
-    color: C.accent,
-    fontWeight: 'bold',
-    fontSize: 15,
+    marginVertical: 18,
   },
 });

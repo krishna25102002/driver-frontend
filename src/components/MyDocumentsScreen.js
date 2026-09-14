@@ -1,131 +1,229 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
-  TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { useNavigation } from '@react-navigation/native';
+import { getDocuments } from '../api';
 import { C } from '../theme';
+import { StackHeader, PrimaryButton, Pill } from './ui';
 
 const MyDocumentsScreen = () => {
-  const documents = [
-    { id: 1, title: 'Driving License', number: 'DL-1234-567890', status: 'Verified' },
-    { id: 2, title: 'RC (Vehicle)', number: 'KA01AB1234', status: 'Pending' },
-    { id: 3, title: 'Aadhaar Card', number: 'XXXX-XXXX-1234', status: 'Verified' },
-    { id: 4, title: 'Insurance', number: 'INS-987654', status: 'Rejected' },
-  ];
+  const navigation = useNavigation();
+  const [documents, setDocuments] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const getStatusStyle = (status) => {
-    switch (status) {
-      case 'Verified':
-        return { bg: C.successSoft, fg: C.success, icon: 'verified' };
-      case 'Pending':
-        return { bg: C.primarySoft, fg: C.warning, icon: 'hourglass-empty' };
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await getDocuments();
+        setDocuments(res.data.documents);
+      } catch (err) {
+        console.log('DOCUMENTS ERR:', err.response?.data || err);
+        setDocuments(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const docEntries = documents
+    ? [
+        { title: 'Driving License', file: documents.licenseFront || documents.licenseBack, icon: 'credit-card' },
+        { title: 'Aadhaar Card', file: documents.aadhaarFront || documents.aadhaarBack, icon: 'badge' },
+        { title: 'RC (Vehicle)', file: documents.vehicleRc, icon: 'directions-car' },
+        { title: 'Profile photo', file: documents.profilePhoto, icon: 'person' },
+      ].filter(d => d.file)
+    : [];
+
+  const status = documents?.status || 'Pending';
+  const getStatusStyle = s => {
+    switch (s) {
+      case 'Approved':
+        return { fg: C.success, bg: C.successSoft, icon: 'verified' };
       case 'Rejected':
-        return { bg: C.dangerSoft, fg: C.danger, icon: 'cancel' };
+        return { fg: C.danger, bg: C.dangerSoft, icon: 'cancel' };
+      case 'Pending':
       default:
-        return { bg: C.inputBg, fg: C.textMuted, icon: 'error-outline' };
+        return { fg: C.warning, bg: C.accentSoft, icon: 'hourglass-empty' };
     }
   };
+  const s = getStatusStyle(status);
+
+  const fileName = file => {
+    if (!file) return '—';
+    const parts = String(file).split(/[/\\]/);
+    return parts[parts.length - 1] || '—';
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StackHeader
+          title="My Documents"
+          subtitle="Verified documents for driving"
+          onBack={() => navigation.goBack()}
+        />
+        <View style={styles.loadingBox}>
+          <ActivityIndicator color={C.primary} size="large" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => { /* back handled by stack */ }} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={24} color={C.primary} />
-        </TouchableOpacity>
-        <Text style={styles.title}>My Documents</Text>
-      </View>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <StackHeader
+          title="My Documents"
+          subtitle="Verified documents for driving"
+          onBack={() => navigation.goBack()}
+        />
 
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {documents.map((doc) => {
-          const s = getStatusStyle(doc.status);
-          return (
-            <View key={doc.id} style={styles.card}>
-              {/* Icon */}
-              <View style={[styles.typeIcon, { backgroundColor: s.bg }]}>
-                <MaterialIcons name="description" size={24} color={s.fg} />
+        {documents ? (
+          <>
+            <View style={styles.summaryCard}>
+              <View style={[styles.summaryIcon, { backgroundColor: s.bg }]}>
+                <MaterialIcons name={s.icon} size={26} color={s.fg} />
               </View>
-
-              {/* Details */}
-              <View style={styles.details}>
-                <Text style={styles.docTitle}>{doc.title}</Text>
-                <Text style={styles.docNumber}>{doc.number}</Text>
+              <View style={{ flex: 1, marginLeft: 14 }}>
+                <Text style={styles.summaryTitle}>
+                  {docEntries.length} document
+                  {docEntries.length === 1 ? '' : 's'} uploaded
+                </Text>
+                <Text style={styles.summarySub}>
+                  Status: {status}
+                </Text>
               </View>
-
-              {/* Status */}
-              <View style={[styles.status, { backgroundColor: s.bg }]}>
-                <Text style={[styles.statusText, { color: s.fg }]}>{doc.status}</Text>
-              </View>
+              <Pill color={s.fg} bg={s.bg} icon={s.icon}>
+                {status}
+              </Pill>
             </View>
-          );
-        })}
 
-        <TouchableOpacity style={styles.uploadBtn}>
-          <MaterialIcons name="add" size={20} color="#fff" />
-          <Text style={styles.uploadText}>Upload New Document</Text>
-        </TouchableOpacity>
+            {docEntries.map((doc, idx) => (
+              <View key={`${doc.title}-${idx}`} style={styles.card}>
+                <View style={[styles.typeIcon, { backgroundColor: C.primarySoft }]}>
+                  <MaterialIcons name={doc.icon} size={24} color={C.primary} />
+                </View>
+
+                <View style={styles.details}>
+                  <Text style={styles.docTitle}>{doc.title}</Text>
+                  <Text style={styles.docNumber} numberOfLines={1}>
+                    {fileName(doc.file)}
+                  </Text>
+                </View>
+
+                <Pill color={s.fg} bg={s.bg} icon={s.icon}>
+                  {status}
+                </Pill>
+              </View>
+            ))}
+
+            <PrimaryButton
+              title="Upload New Document"
+              icon="add"
+              onPress={() => navigation.navigate('UploadDocuments')}
+              style={styles.uploadBtn}
+            />
+          </>
+        ) : (
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIcon}>
+              <MaterialIcons name="folder-off" size={36} color={C.primary} />
+            </View>
+            <Text style={styles.emptyTitle}>No documents uploaded yet</Text>
+            <Text style={styles.emptySub}>
+              Upload your documents to get verified and start driving.
+            </Text>
+            <PrimaryButton
+              title="Upload Documents"
+              icon="upload"
+              onPress={() => navigation.navigate('UploadDocuments')}
+              style={styles.uploadBtn}
+            />
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 };
 
+export default MyDocumentsScreen;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.bg,
-    padding: 15,
+  },
+  content: {
+    padding: 16,
+    paddingBottom: 40,
   },
 
-  headerRow: {
+  loadingBox: {
+    alignItems: 'center',
+    marginTop: 60,
+  },
+
+  summaryCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15,
-  },
-  backBtn: {
-    marginRight: 10,
-    padding: 4,
-    backgroundColor: C.surface,
-    borderRadius: 20,
+    backgroundColor: C.primarySoft,
     borderWidth: 1,
-    borderColor: C.border,
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: C.primaryBorder,
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 16,
   },
-  title: {
+  summaryIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  summaryTitle: {
     color: C.text,
-    fontSize: 22,
     fontWeight: 'bold',
+    fontSize: 15,
+  },
+  summarySub: {
+    color: C.textSub,
+    fontSize: 12,
+    marginTop: 2,
   },
 
-  // Card
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: C.surface,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: C.border,
     padding: 14,
     marginBottom: 12,
+    ...C.shadow,
   },
-
   typeIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
-
   details: {
     flex: 1,
+    marginRight: 8,
   },
   docTitle: {
     color: C.text,
@@ -138,32 +236,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
-  status: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+  emptyCard: {
+    alignItems: 'center',
+    backgroundColor: C.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingVertical: 36,
+    paddingHorizontal: 20,
+    ...C.shadow,
   },
-  statusText: {
-    fontSize: 12,
+  emptyIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: C.primarySoft,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  emptyTitle: {
+    color: C.text,
+    fontSize: 16,
     fontWeight: 'bold',
+  },
+  emptySub: {
+    color: C.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
   },
 
   uploadBtn: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: C.accent,
-    padding: 15,
-    borderRadius: 30,
-    marginTop: 6,
-    ...C.shadow,
-    shadowOpacity: 0.25,
-  },
-  uploadText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    marginLeft: 6,
+    marginTop: 18,
   },
 });
-
-export default MyDocumentsScreen;

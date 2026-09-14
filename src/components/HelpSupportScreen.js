@@ -8,11 +8,15 @@ import {
   TextInput,
   ScrollView,
   Linking,
+  Alert,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { useNavigation } from '@react-navigation/native';
 import { C } from '../theme';
+import { StackHeader, PrimaryButton } from './ui';
 
 const HelpSupportScreen = () => {
+  const navigation = useNavigation();
   const [message, setMessage] = useState('');
 
   const faqs = [
@@ -39,57 +43,65 @@ const HelpSupportScreen = () => {
   };
 
   const submitIssue = () => {
-    alert('Issue submitted!');
+    Alert.alert('Submitted', 'Our team will get back to you shortly.');
     setMessage('');
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => { /* back handled by stack */ }} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={24} color={C.primary} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Help & Support</Text>
-      </View>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <StackHeader
+          title="Help & Support"
+          subtitle="We're here to help"
+          onBack={() => navigation.goBack()}
+        />
 
-      <ScrollView showsVerticalScrollIndicator={false}>
         {/* FAQ Section */}
         <Text style={styles.sectionTitle}>FAQs</Text>
 
         {faqs.map((item, index) => (
           <View key={index} style={styles.faqCard}>
-            <Text style={styles.question}>{item.question}</Text>
+            <View style={styles.faqQuestionRow}>
+              <View style={styles.faqIcon}>
+                <MaterialIcons name="help" size={16} color={C.accent} />
+              </View>
+              <Text style={styles.question}>{item.question}</Text>
+            </View>
             <Text style={styles.answer}>{item.answer}</Text>
           </View>
         ))}
 
         {/* Contact Section */}
-        <Text style={styles.sectionTitle}>Contact Support</Text>
+        <Text style={styles.sectionTitle}>Contact support</Text>
 
-        <TouchableOpacity style={styles.contactItem} onPress={callSupport}>
-          <View style={styles.contactIcon}>
-            <MaterialIcons name="phone" size={22} color={C.primary} />
+        <TouchableOpacity style={styles.contactItem} onPress={callSupport} activeOpacity={0.8}>
+          <View style={[styles.contactIcon, { backgroundColor: C.successSoft }]}>
+            <MaterialIcons name="phone" size={22} color={C.success} />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.contactText}>Call Support</Text>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.contactText}>Call support</Text>
             <Text style={styles.contactSub}>1800-123-456 (toll free)</Text>
           </View>
           <MaterialIcons name="chevron-right" size={22} color={C.textMuted} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.contactItem} onPress={emailSupport}>
-          <View style={styles.contactIcon}>
-            <MaterialIcons name="email" size={22} color={C.primary} />
+        <TouchableOpacity style={styles.contactItem} onPress={emailSupport} activeOpacity={0.8}>
+          <View style={[styles.contactIcon, { backgroundColor: C.infoSoft }]}>
+            <MaterialIcons name="email" size={22} color={C.info} />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.contactText}>Email Support</Text>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.contactText}>Email support</Text>
             <Text style={styles.contactSub}>support@driverapp.com</Text>
           </View>
           <MaterialIcons name="chevron-right" size={22} color={C.textMuted} />
         </TouchableOpacity>
 
         {/* Report Issue */}
-        <Text style={styles.sectionTitle}>Report an Issue</Text>
+        <Text style={styles.sectionTitle}>Report an issue</Text>
 
         <View style={styles.inputBox}>
           <TextInput
@@ -102,95 +114,93 @@ const HelpSupportScreen = () => {
           />
         </View>
 
-        <TouchableOpacity style={styles.submitBtn} onPress={submitIssue}>
-          <Text style={styles.submitText}>Submit</Text>
-        </TouchableOpacity>
+        <PrimaryButton
+          title="Submit"
+          icon="send"
+          onPress={submitIssue}
+        />
       </ScrollView>
     </SafeAreaView>
   );
 };
 
+export default HelpSupportScreen;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.bg,
-    padding: 15,
   },
-
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  backBtn: {
-    marginRight: 10,
-    padding: 4,
-    backgroundColor: C.surface,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: C.border,
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    color: C.text,
-    fontSize: 22,
-    fontWeight: 'bold',
+  content: {
+    padding: 16,
+    paddingBottom: 40,
   },
 
   sectionTitle: {
     color: C.primary,
     fontWeight: 'bold',
-    marginTop: 14,
-    marginBottom: 8,
-    letterSpacing: 1,
-    fontSize: 13,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    fontSize: 12,
+    marginTop: 16,
+    marginBottom: 10,
   },
 
-  // FAQ
   faqCard: {
     backgroundColor: C.surface,
-    padding: 14,
-    borderRadius: 14,
+    padding: 15,
+    borderRadius: 18,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: C.border,
+    ...C.shadow,
+  },
+  faqQuestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  faqIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: C.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
   question: {
     color: C.text,
     fontWeight: 'bold',
+    flex: 1,
   },
   answer: {
     color: C.textSub,
-    marginTop: 5,
+    marginTop: 6,
     fontSize: 13,
+    lineHeight: 18,
   },
 
-  // Contact
   contactItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: C.surface,
     padding: 14,
-    borderRadius: 14,
+    borderRadius: 18,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: C.border,
+    ...C.shadow,
   },
   contactIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: C.primarySoft,
+    width: 44,
+    height: 44,
+    borderRadius: 13,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
   contactText: {
     color: C.text,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   contactSub: {
     color: C.textMuted,
@@ -198,36 +208,20 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Input
   inputBox: {
     backgroundColor: C.surface,
-    borderRadius: 14,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: C.border,
     padding: 10,
-    marginBottom: 10,
+    marginBottom: 14,
+    ...C.shadow,
   },
   input: {
     color: C.text,
-    minHeight: 90,
+    minHeight: 96,
     textAlignVertical: 'top',
-  },
-
-  // Button
-  submitBtn: {
-    backgroundColor: C.accent,
-    padding: 16,
-    borderRadius: 30,
-    alignItems: 'center',
-    marginBottom: 20,
-    ...C.shadow,
-    shadowOpacity: 0.28,
-  },
-  submitText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 15,
+    padding: 6,
+    fontSize: 14,
   },
 });
-
-export default HelpSupportScreen;

@@ -1,114 +1,154 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { setAuthToken, getDashboard, getEarnings } from '../../api';
+import { getDashboard, getEarnings } from '../../api';
 import { C } from '../../theme';
+import { Hero, StatCard, Pill } from '../../components/ui';
+
+const fmt = value => {
+  const n = Number(value || 0);
+  return n % 1 === 0 ? String(n) : n.toFixed(2);
+};
 
 const EarningsScreen = () => {
-  const weeklyData = [60, 90, 40, 120, 100, 110, 50];
-  const [monthlyEarnings, setMonthlyEarnings] = useState('0');
-  const [totalTrips, setTotalTrips] = useState('0');
-  const [monthlyTrips, setMonthlyTrips] = useState('0');
-  const [rating, setRating] = useState('5.0');
+  const [earnings, setEarnings] = useState(null);
+  const [dashboard, setDashboard] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const token = await AsyncStorage.getItem('token');
-        if (token) setAuthToken(token);
-
-        const [d, e] = await Promise.all([getDashboard(), getEarnings()]);
-        const dash = d.data.dashboard || d.data;
-
-        setMonthlyEarnings(String(dash.monthlyEarnings ?? '0'));
-        setTotalTrips(String(dash.totalTrips ?? '0'));
-        setMonthlyTrips(String(dash.monthlyTrips ?? '0'));
-        setRating(dash.rating != null ? Number(dash.rating).toFixed(1) : '5.0');
+        const [e, d] = await Promise.all([getEarnings(), getDashboard()]);
+        setEarnings(e.data.earnings);
+        setDashboard(d.data.dashboard || d.data);
       } catch (err) {
         console.log('EARNINGS ERR:', err.response?.data || err);
+      } finally {
+        setLoading(false);
       }
     };
     load();
   }, []);
 
-  const avgPerTrip = Number(totalTrips) > 0
-    ? (Number(monthlyEarnings) / Math.max(Number(totalTrips), 1)).toFixed(0)
-    : '0';
+  const monthly = earnings?.monthly || {};
+  const weekly = earnings?.weekly || {};
+  const total = earnings?.total || {};
+
+  const monthlyTrips = monthly.totalTrips || '0';
+  const monthlyNet = monthly.netEarnings || 0;
+  const rating =
+    dashboard?.rating != null ? Number(dashboard.rating).toFixed(1) : '5.0';
+
+  const avgPerTrip =
+    Number(monthly.totalTrips) > 0
+      ? (monthlyNet / Number(monthly.totalTrips)).toFixed(0)
+      : '0';
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.loadingBox]}>
+        <Text style={styles.loadingText}>Loading your earnings…</Text>
+      </View>
+    );
+  }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Top Card */}
-      <View style={styles.topCard}>
-        <View>
-          <Text style={styles.month}>This Month</Text>
-          <Text style={styles.amount}>₹{monthlyEarnings}</Text>
-          <Text style={styles.growth}>{monthlyTrips} trips completed</Text>
-        </View>
-        <View style={styles.topIconCircle}>
-          <MaterialIcons name="trending-up" size={28} color="#fff" />
-        </View>
-      </View>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Top hero card */}
+      <Hero style={styles.topCard}>
+        <Pill color="#FFD9BC" bg="rgba(255,255,255,0.14)" icon="trending-up" style={styles.topPill}>
+          This month
+        </Pill>
+        <Text style={styles.amount}>₹{fmt(monthlyNet)}</Text>
+        <Text style={styles.growth}>
+          {monthlyTrips} trips completed{rating ? ` • ${rating} ★ rating` : ''}
+        </Text>
+      </Hero>
 
-      {/* Stats */}
+      {/* Stats grid */}
       <View style={styles.grid}>
-        <StatCard title="Total Trips" value={totalTrips} highlight accent />
-        <StatCard title="Avg / Trip" value={`₹${avgPerTrip}`} />
-        <StatCard title="Rating" value={`${rating} ★`} highlight />
-        <StatCard title="This Month" value={monthlyTrips} />
+        <StatCard
+          icon="event-available"
+          label="Total trips"
+          value={String(total.totalTrips || dashboard?.totalTrips || '0')}
+          color={C.primary}
+          style={styles.gridCard}
+        />
+        <StatCard
+          icon="currency-rupee"
+          label="Avg / trip"
+          value={`₹${avgPerTrip}`}
+          color={C.accent}
+          bg={C.accentSoft}
+          style={styles.gridCard}
+        />
+        <StatCard
+          icon="star"
+          label="Rating"
+          value={`${rating}`}
+          color={C.warning}
+          bg={C.accentSoft}
+          style={styles.gridCard}
+        />
+        <StatCard
+          icon="calendar-month"
+          label="Trips this month"
+          value={`${monthlyTrips}`}
+          color={C.text}
+          bg={C.primarySoft}
+          style={styles.gridCard}
+        />
       </View>
 
-      {/* Weekly Earnings */}
-      <Text style={styles.sectionTitle}>Weekly earnings</Text>
-
-      <View style={styles.chartCard}>
-        <View style={styles.chart}>
-          {weeklyData.map((value, index) => {
-            const active = index === 3;
-            return (
-              <View key={index} style={styles.barContainer}>
-                <View
-                  style={[
-                    styles.bar,
-                    {
-                      height: value,
-                      backgroundColor: active ? C.accent : C.primarySoft,
-                    },
-                  ]}
-                />
-                <Text style={[styles.day, active && { color: C.accent, fontWeight: 'bold' }]}>
-                  {['M', 'T', 'W', 'T', 'F', 'S', 'S'][index]}
-                </Text>
-              </View>
-            );
-          })}
+      {/* Weekly summary */}
+      <Text style={styles.sectionLabel}>This week</Text>
+      <View style={styles.weekCard}>
+        <View style={styles.weekRow}>
+          <View style={styles.weekItem}>
+            <MaterialIcons name="luggage" size={18} color={C.primary} />
+            <Text style={styles.weekValue}>{weekly.totalTrips || 0}</Text>
+            <Text style={styles.weekLabel}>Trips</Text>
+          </View>
+          <View style={styles.weekDivider} />
+          <View style={styles.weekItem}>
+            <MaterialIcons name="currency-rupee" size={18} color={C.accent} />
+            <Text style={styles.weekValue}>₹{fmt(weekly.netEarnings || 0)}</Text>
+            <Text style={styles.weekLabel}>Net earnings</Text>
+          </View>
+          <View style={styles.weekDivider} />
+          <View style={styles.weekItem}>
+            <MaterialIcons name="trending-up" size={18} color={C.success} />
+            <Text style={styles.weekValue}>₹{fmt(weekly.grossEarnings || 0)}</Text>
+            <Text style={styles.weekLabel}>Gross</Text>
+          </View>
         </View>
       </View>
 
-      {/* Pending Payout */}
+      {/* Commission / payout */}
       <View style={styles.payoutCard}>
-        <View>
-          <Text style={styles.payoutTitle}>Pending Payout</Text>
-          <Text style={styles.payoutAmount}>₹0</Text>
-          <Text style={styles.payoutHint}>Transferred every Friday</Text>
+        <View style={styles.payoutGlow} />
+        <View style={styles.payoutIcon}>
+          <MaterialIcons name="account-balance-wallet" size={24} color={C.accent} />
         </View>
-
-        <View style={styles.withdrawBtn}>
-          <Text style={styles.withdrawText}>Withdraw</Text>
+        <View style={{ flex: 1, marginLeft: 14 }}>
+          <Text style={styles.payoutTitle}>Commission this month</Text>
+          <Text style={styles.payoutAmount}>₹{fmt(monthly.commission || 0)}</Text>
+          <Text style={styles.payoutHint}>
+            {Number(monthly.totalTrips) > 0
+              ? `From ${monthly.totalTrips} completed trip${monthly.totalTrips === 1 ? '' : 's'}`
+              : 'No completed trips this month'}
+          </Text>
         </View>
       </View>
     </ScrollView>
   );
 };
 
-const StatCard = ({ title, value, highlight, accent }) => (
-  <View style={styles.statCard}>
-    <Text style={styles.statTitle}>{title}</Text>
-    <Text style={[styles.statValue, highlight && { color: C.accent }, accent && styles.statValueAccent]}>
-      {value}
-    </Text>
-  </View>
-);
+export default EarningsScreen;
 
 const styles = StyleSheet.create({
   container: {
@@ -116,117 +156,126 @@ const styles = StyleSheet.create({
     backgroundColor: C.bg,
   },
   content: {
-    padding: 15,
-    paddingBottom: 80,
+    padding: 16,
+    paddingBottom: 110,
   },
 
-  // Top Card
-  topCard: {
-    backgroundColor: C.primary,
-    borderRadius: 22,
-    padding: 22,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  loadingBox: {
     alignItems: 'center',
-    marginBottom: 15,
-    ...C.shadow,
-    shadowOpacity: 0.28,
+    justifyContent: 'center',
   },
-  month: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 15,
+  loadingText: {
+    color: C.textSub,
+    fontSize: 14,
+  },
+
+  /* Top hero */
+  topCard: {
+    padding: 22,
+    marginBottom: 15,
+  },
+  topPill: {
+    marginBottom: 12,
   },
   amount: {
     color: '#fff',
-    fontSize: 38,
+    fontSize: 40,
     fontWeight: 'bold',
-    marginVertical: 4,
+    letterSpacing: 0.5,
   },
   growth: {
-    color: 'rgba(255,255,255,0.9)',
-  },
-  topIconCircle: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 30,
-    padding: 12,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 4,
+    fontSize: 13,
   },
 
-  // Grid
+  /* Stats grid */
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
   },
-  statCard: {
-    backgroundColor: C.surface,
-    width: '48%',
-    padding: 16,
-    borderRadius: 16,
+  gridCard: {
+    width: '48.5%',
+    maxWidth: '48.5%',
     marginBottom: 10,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  statTitle: {
-    color: C.textSub,
-    fontSize: 13,
-  },
-  statValue: {
-    color: C.text,
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginTop: 5,
-  },
-  statValueAccent: {
-    color: C.primary,
   },
 
-  // Chart
-  sectionTitle: {
-    color: C.text,
-    fontSize: 16,
-    marginVertical: 10,
+  /* Section */
+  sectionLabel: {
+    color: C.primary,
+    fontSize: 12,
     fontWeight: 'bold',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 10,
+    marginBottom: 10,
   },
-  chartCard: {
+
+  /* Weekly card */
+  weekCard: {
     backgroundColor: C.surface,
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: C.border,
     paddingVertical: 18,
     paddingHorizontal: 10,
     marginBottom: 15,
+    ...C.shadow,
   },
-  chart: {
+  weekRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    paddingHorizontal: 5,
-    height: 160,
-  },
-  barContainer: {
     alignItems: 'center',
+  },
+  weekItem: {
     flex: 1,
+    alignItems: 'center',
   },
-  bar: {
-    width: 20,
-    borderRadius: 6,
+  weekValue: {
+    color: C.text,
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginTop: 6,
   },
-  day: {
+  weekLabel: {
     color: C.textMuted,
-    marginTop: 5,
     fontSize: 12,
+    marginTop: 2,
+  },
+  weekDivider: {
+    width: 1,
+    height: 34,
+    backgroundColor: C.border,
   },
 
-  // Payout
+  /* Commission */
   payoutCard: {
     backgroundColor: C.accentSoft,
     borderWidth: 1,
     borderColor: C.accentBorder,
-    borderRadius: 18,
-    padding: 18,
+    borderRadius: 20,
+    padding: 16,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  payoutGlow: {
+    position: 'absolute',
+    top: -30,
+    right: -30,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(255,106,0,0.1)',
+  },
+  payoutIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: C.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...C.shadow,
   },
   payoutTitle: {
     color: C.textSub,
@@ -242,18 +291,4 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
-  withdrawBtn: {
-    backgroundColor: C.accent,
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 30,
-    ...C.shadow,
-    shadowOpacity: 0.25,
-  },
-  withdrawText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
 });
-
-export default EarningsScreen;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,10 @@ import {
   Switch,
   RefreshControl,
   ScrollView,
-  Alert,
+  Animated,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
-import { setAuthToken } from '../../api';
 import {
   getDriverProfile,
   getDashboard,
@@ -20,20 +18,74 @@ import {
   updateDriverStatus,
 } from '../../api';
 import { C } from '../../theme';
+import { Avatar, Hero, Pill } from '../../components/ui';
+
+const Pulse = ({ color = C.accent, size = 18 }) => {
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(anim, {
+        toValue: 1,
+        duration: 1700,
+        useNativeDriver: true,
+      })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [anim]);
+
+  const scale = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 2.4],
+  });
+
+  const opacity = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.5, 0],
+  });
+
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            borderRadius: size / 2,
+            backgroundColor: color,
+            opacity,
+            transform: [{ scale }],
+          },
+        ]}
+      />
+      <View
+        style={{
+          width: size / 2,
+          height: size / 2,
+          borderRadius: size / 4,
+          backgroundColor: color,
+        }}
+      />
+    </View>
+  );
+};
 
 const Dashboard = () => {
   const [isOnline, setIsOnline] = useState(true);
   const [profile, setProfile] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [booking, setBooking] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const token = await AsyncStorage.getItem('token');
-      if (token) setAuthToken(token);
-
       const [p, d, b] = await Promise.all([
         getDriverProfile(),
         getDashboard(),
@@ -49,8 +101,6 @@ const Dashboard = () => {
       }
     } catch (err) {
       console.log('DASHBOARD ERR:', err.response?.data || err);
-    } finally {
-      setLoading(false);
     }
   }, []);
 
@@ -64,7 +114,7 @@ const Dashboard = () => {
     }, [loadData])
   );
 
-  const toggleStatus = async (value) => {
+  const toggleStatus = async value => {
     setIsOnline(value);
     try {
       await updateDriverStatus(value ? 'Online' : 'Offline');
@@ -80,10 +130,6 @@ const Dashboard = () => {
     setRefreshing(false);
   };
 
-  const initials = profile?.fullName
-    ? profile.fullName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
-    : 'DR';
-
   const greeting = () => {
     const h = new Date().getHours();
     if (h < 12) return 'Good morning,';
@@ -91,109 +137,192 @@ const Dashboard = () => {
     return 'Good evening,';
   };
 
+  const todayEarnings = dashboard?.todayEarnings ?? '0';
+  const todayTrips = dashboard?.todayTrips ?? '0';
+  const rating =
+    profile?.rating != null
+      ? Number(profile.rating).toFixed(1)
+      : dashboard?.rating != null
+        ? Number(dashboard.rating).toFixed(1)
+        : '5.0';
+
   return (
     <ScrollView
       style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.primary} colors={[C.primary]} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={C.primary}
+          colors={[C.primary]}
+        />
       }
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.greeting}>{greeting()}</Text>
-          <Text style={styles.name}>{profile?.fullName || 'Driver'}</Text>
-          <Text style={styles.location}>
-            <Icon name="location-on" size={14} color={C.primary} /> {profile?.city ? `${profile.city}, ${profile.state || ''}` : 'Ready for trips'}
-          </Text>
-
-          <View style={styles.statusRow}>
-            <View style={[styles.onlinePill, !isOnline && styles.offlinePill]}>
-              <Text style={[styles.onlineText, !isOnline && styles.offlineText]}>
-                {isOnline ? 'Online' : 'Offline'}
+      {/* ============ HERO ============ */}
+      <Hero style={styles.hero}>
+        <View style={styles.heroTop}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.greeting}>{greeting()}</Text>
+            <Text style={styles.name} numberOfLines={1}>
+              {profile?.fullName || 'Driver'}
+            </Text>
+            <View style={styles.locationRow}>
+              <Icon name="location-on" size={15} color="#FFD9BC" />
+              <Text style={styles.location}>
+                {profile?.city
+                  ? `${profile.city}, ${profile.state || ''}`
+                  : 'Ready for trips'}
               </Text>
             </View>
-            <Text style={styles.readyText}>
-              {isOnline ? 'Ready for trips' : 'Not taking trips'}
-            </Text>
+          </View>
 
-            <Switch
-              value={isOnline}
-              onValueChange={toggleStatus}
-              thumbColor="#fff"
-              trackColor={{ false: C.borderDark, true: C.primary }}
-            />
+          <Avatar name={profile?.fullName || 'Driver'} size={62} />
+        </View>
+
+        {/* Availability */}
+        <View style={styles.availRow}>
+          <View style={styles.availLeft}>
+            <Pulse color={isOnline ? C.success : C.textMuted} />
+            <View style={{ marginLeft: 10 }}>
+              <Text style={styles.availTitle}>
+                {isOnline ? "You're online" : "You're offline"}
+              </Text>
+              <Text style={styles.availSub}>
+                {isOnline ? 'Receiving new trip requests' : 'Go online to get trips'}
+              </Text>
+            </View>
+          </View>
+
+          <Switch
+            value={isOnline}
+            onValueChange={toggleStatus}
+            thumbColor="#fff"
+            trackColor={{ false: 'rgba(255,255,255,0.3)', true: C.accent }}
+          />
+        </View>
+
+        {/* Quick stats strip */}
+        <View style={styles.heroStrip}>
+          <View style={styles.heroStripItem}>
+            <Text style={styles.heroStripValue}>₹{todayEarnings}</Text>
+            <Text style={styles.heroStripLabel}>Today's earnings</Text>
+          </View>
+          <View style={styles.heroStripDivider} />
+          <View style={styles.heroStripItem}>
+            <Text style={styles.heroStripValue}>{todayTrips}</Text>
+            <Text style={styles.heroStripLabel}>Trips today</Text>
+          </View>
+          <View style={styles.heroStripDivider} />
+          <View style={styles.heroStripItem}>
+            <Text style={styles.heroStripValue}>{rating} ★</Text>
+            <Text style={styles.heroStripLabel}>Driver rating</Text>
           </View>
         </View>
+      </Hero>
 
-        {/* Avatar */}
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initials}</Text>
-        </View>
-      </View>
+      {/* ============ TRIP SECTION ============ */}
+      <Text style={styles.sectionLabel}>YOUR TRIP</Text>
 
-      {/* Map Placeholder */}
-      <View style={styles.mapBox}>
-        <Icon name="location-on" size={40} color={C.primary} />
-        <Text style={styles.mapText}>Live location tracking</Text>
-      </View>
-
-      {/* Cards */}
-      <View style={styles.cardRow}>
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Today's Earnings</Text>
-          <Text style={styles.earnings}>₹{dashboard?.todayEarnings ?? '0'}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Trips Today</Text>
-          <Text style={styles.trips}>{dashboard?.todayTrips ?? '0'}</Text>
-        </View>
-      </View>
-
-      {/* Trip Request / Active Booking */}
       {booking ? (
-        <View style={[styles.tripBox, styles.tripBoxActive]}>
+        <View style={[styles.tripCard, styles.tripCardActive]}>
+          <View style={styles.tripCardGlow} />
           <View style={styles.tripHeader}>
             <View style={styles.tripTitleWrap}>
-              <View style={styles.tripPulse} />
+              <Pill color={C.accentDark} bg="rgba(255,255,255,0.9)" icon="bolt">
+                {booking.bookingNumber}
+              </Pill>
               <Text style={styles.tripTitle}>
                 {booking.bookingStatus === 'Accepted'
-                  ? 'Trip Accepted — Head to Pickup'
+                  ? 'Trip accepted — head to pickup'
                   : booking.bookingStatus === 'Reached Pickup'
-                    ? 'Reached Pickup'
-                    : 'Trip In Progress'}
+                    ? 'Reached pickup'
+                    : 'Trip in progress'}
               </Text>
             </View>
-            <View style={styles.distanceBadge}>
-              <Text style={styles.distanceText}>#{booking.bookingNumber}</Text>
-            </View>
+            <Icon name="directions-car" size={26} color="rgba(255,255,255,0.9)" />
           </View>
 
           <View style={styles.routeRow}>
-            <View style={[styles.dot, { backgroundColor: C.success }]} />
-            <Text style={styles.tripRoute}>
+            <View style={[styles.routeDot, { backgroundColor: C.success }]} />
+            <Text style={styles.routeText}>
               {booking.pickupLocation?.address || booking.pickupAddress}
             </Text>
           </View>
           <View style={styles.routeRow}>
-            <View style={[styles.dot, { backgroundColor: C.danger }]} />
-            <Text style={styles.tripRoute}>
+            <View style={[styles.routeDot, { backgroundColor: C.danger }]} />
+            <Text style={styles.routeText}>
               {booking.dropLocation?.address || booking.dropAddress}
             </Text>
           </View>
-          <Text style={styles.tripFare}>Estimated Fare: ₹{booking.estimatedFare || booking.fare}</Text>
+
+          <View style={styles.fareRow}>
+            <Text style={styles.fareLabel}>Estimated fare</Text>
+            <Text style={styles.fareValue}>
+              ₹{booking.estimatedFare || booking.fare}
+            </Text>
+          </View>
         </View>
       ) : (
-        <View style={styles.tripBox}>
-          <View style={styles.tripHeader}>
-            <Text style={styles.tripTitle}>No Active Trip</Text>
+        <View style={styles.tripCard}>
+          <View style={styles.tripCardTop}>
+            <View style={styles.tripCardIcon}>
+              <Icon
+                name={isOnline ? 'radar' : 'location-off'}
+                size={26}
+                color={isOnline ? C.accent : C.textSub}
+              />
+            </View>
+            <View style={{ flex: 1, marginLeft: 14 }}>
+              <Text style={styles.tripEmptyTitle}>
+                {isOnline ? 'Waiting for trips' : 'No active trip'}
+              </Text>
+              <Text style={styles.tripEmptySub}>
+                {isOnline
+                  ? 'New requests appear here instantly. Keep notifications on.'
+                  : "You're offline. Go online to start receiving requests."}
+              </Text>
+            </View>
           </View>
-          <Text style={styles.tripRoute}>
-            {isOnline ? 'Waiting for trip requests…' : 'Go online to receive trips'}
-          </Text>
+
+          {!isOnline && (
+            <TouchableOpacity
+              style={styles.goOnlineBtn}
+              activeOpacity={0.85}
+              onPress={() => toggleStatus(true)}
+            >
+              <Icon name="wifi" size={18} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.goOnlineText}>Go Online</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
+
+      {/* ============ STATS ============ */}
+      <Text style={styles.sectionLabel}>OVERVIEW</Text>
+
+      <View style={styles.statsRow}>
+        <View style={styles.statCard}>
+          <View style={[styles.statCircle, { backgroundColor: C.accentSoft }]}>
+            <Icon name="account-balance-wallet" size={22} color={C.accent} />
+          </View>
+          <Text style={[styles.statValue, { color: C.accent }]}>
+            ₹{dashboard?.monthlyEarnings ?? '0'}
+          </Text>
+          <Text style={styles.statLabel}>This month</Text>
+        </View>
+
+        <View style={styles.statCard}>
+          <View style={[styles.statCircle, { backgroundColor: C.primarySoft }]}>
+            <Icon name="event-available" size={22} color={C.primary} />
+          </View>
+          <Text style={[styles.statValue, { color: C.primary }]}>
+            {dashboard?.totalTrips ?? '0'}
+          </Text>
+          <Text style={styles.statLabel}>All-time trips</Text>
+        </View>
+      </View>
     </ScrollView>
   );
 };
@@ -204,200 +333,255 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.bg,
+  },
+
+  content: {
     padding: 16,
-    paddingBottom: 80,
+    paddingBottom: 110,
   },
 
-  header: {
+  /* ============ HERO ============ */
+  hero: {
+    marginBottom: 6,
+  },
+  heroTop: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
+    marginBottom: 18,
   },
-
   greeting: {
-    color: C.textSub,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.6,
   },
-
   name: {
-    color: C.text,
-    fontSize: 24,
+    color: '#fff',
+    fontSize: 26,
     fontWeight: 'bold',
+    marginTop: 2,
   },
-
-  location: {
-    color: C.textSub,
-    marginVertical: 5,
-  },
-
-  statusRow: {
+  locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
-  },
-
-  onlinePill: {
-    backgroundColor: C.successSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 12,
-    marginRight: 8,
-  },
-  onlineText: {
-    color: C.success,
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  offlinePill: {
-    backgroundColor: C.inputBg,
-  },
-  offlineText: {
-    color: C.textMuted,
-  },
-
-  readyText: {
-    color: C.textMuted,
-    marginRight: 10,
-    fontSize: 12,
-  },
-
-  avatar: {
-    backgroundColor: C.primary,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...C.shadow,
-    shadowOpacity: 0.3,
-  },
-
-  avatarText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 20,
-  },
-
-  mapBox: {
-    backgroundColor: C.surface,
-    height: 130,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
-    marginVertical: 15,
-  },
-
-  mapText: {
-    color: C.textMuted,
     marginTop: 6,
   },
-
-  cardRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  location: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
+    marginLeft: 4,
   },
 
-  card: {
-    backgroundColor: C.surface,
-    width: '48%',
-    padding: 16,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-
-  cardTitle: {
-    color: C.textSub,
-  },
-
-  earnings: {
-    color: C.accent,
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginTop: 4,
-  },
-
-  trips: {
-    color: C.text,
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginTop: 4,
-  },
-
-  tripBox: {
-    backgroundColor: C.surface,
-    borderRadius: 18,
-    padding: 16,
-    marginTop: 18,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-
-  tripBoxActive: {
-    backgroundColor: C.accentSoft,
-    borderColor: C.accentBorder,
-  },
-
-  tripHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-
-  tripTitleWrap: {
+  /* availability */
+  availRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 16,
   },
-
-  tripPulse: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: C.primary,
-    marginRight: 8,
+  availLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-
-  tripTitle: {
-    color: C.accentDark,
-    fontWeight: 'bold',
-    flex: 1,
-  },
-
-  distanceBadge: {
-    backgroundColor: C.accent,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
-
-  distanceText: {
+  availTitle: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 12,
+    fontSize: 14,
+  },
+  availSub: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 11,
+    marginTop: 1,
   },
 
+  /* hero strip */
+  heroStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+  },
+  heroStripItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  heroStripValue: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: 'bold',
+  },
+  heroStripLabel: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  heroStripDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+
+  /* ============ SECTIONS ============ */
+  sectionLabel: {
+    color: C.primary,
+    fontSize: 12,
+    fontWeight: 'bold',
+    letterSpacing: 1.5,
+    marginTop: 20,
+    marginBottom: 10,
+  },
+
+  /* trip card */
+  tripCard: {
+    backgroundColor: C.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 16,
+    ...C.shadow,
+  },
+  tripCardActive: {
+    backgroundColor: C.primary,
+    borderColor: C.primaryDark,
+    overflow: 'hidden',
+  },
+  tripCardGlow: {
+    position: 'absolute',
+    top: -50,
+    right: -50,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(255,106,0,0.28)',
+  },
+  tripHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  tripTitleWrap: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  tripTitle: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginTop: 8,
+  },
   routeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 10,
   },
-
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
+  routeDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 10,
   },
-
-  tripRoute: {
-    color: C.text,
+  routeText: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 14,
     flexShrink: 1,
   },
-
-  tripFare: {
-    color: C.accent,
+  fareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.15)',
+  },
+  fareLabel: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+  },
+  fareValue: {
+    color: '#fff',
+    fontSize: 20,
     fontWeight: 'bold',
-    marginTop: 10,
+  },
+
+  /* empty trip card */
+  tripCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tripCardIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: C.inputBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tripEmptyTitle: {
+    color: C.text,
+    fontSize: 17,
+    fontWeight: 'bold',
+  },
+  tripEmptySub: {
+    color: C.textSub,
+    fontSize: 13,
+    marginTop: 3,
+    lineHeight: 18,
+  },
+  goOnlineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.accent,
+    borderRadius: 30,
+    paddingVertical: 13,
+    marginTop: 14,
+    ...C.shadow,
+    shadowOpacity: 0.22,
+  },
+  goOnlineText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+
+  /* stats row */
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  statCard: {
+    width: '48.5%',
+    backgroundColor: C.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 16,
+    ...C.shadow,
+  },
+  statCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+  statLabel: {
+    color: C.textSub,
+    fontSize: 12,
+    marginTop: 2,
   },
 });

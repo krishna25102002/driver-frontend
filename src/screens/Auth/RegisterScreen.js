@@ -1,12 +1,18 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ScrollView, Alert,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { registerDriver, setAuthToken } from "../../api";
+import { registerDriver, setAuthToken } from '../../api';
 import { C } from '../../theme';
+import { Hero, PrimaryButton } from '../../components/ui';
 
 const RegisterScreen = () => {
   const navigation = useNavigation();
@@ -19,12 +25,10 @@ const RegisterScreen = () => {
     city: '',
     state: '',
     vehicleType: '',
-    registrationNumber: '',
   });
 
   const handleRegister = async () => {
     try {
-      // ✅ Validation
       if (!form.fullName || !form.email || !form.password) {
         Alert.alert('Error', 'Please fill account details');
         return;
@@ -35,12 +39,6 @@ const RegisterScreen = () => {
         return;
       }
 
-      if (!form.registrationNumber) {
-        Alert.alert('Error', 'Please enter vehicle registration number');
-        return;
-      }
-
-      // 🔥 Match backend format
       const payload = {
         fullName: form.fullName,
         email: form.email,
@@ -49,57 +47,53 @@ const RegisterScreen = () => {
         city: form.city,
         state: form.state,
         vehicleType: form.vehicleType,
-        registrationNumber: form.registrationNumber,
       };
 
-      console.log("📤 Sending payload:", payload);
-
       const res = await registerDriver(payload);
-
-      console.log("✅ Response:", res.data);
 
       const driverId = res.data.driver?._id || res.data.driver?.id;
 
       if (res.data.token) {
-        await AsyncStorage.setItem("token", res.data.token);
+        await AsyncStorage.setItem('token', res.data.token);
         setAuthToken(res.data.token);
-        console.log("✅ Token saved");
-      } else {
-        console.log("⚠️ Token not found in response");
       }
 
       Alert.alert('Success', 'Driver Registered');
 
       navigation.navigate('UploadDocuments', { driverId });
-
     } catch (err) {
-      console.log("❌ ERROR:", err);
-      console.log("❌ ERROR DATA:", err.response?.data);
-
+      console.log('REGISTER ERR:', err.response?.data || err);
       Alert.alert('Error', err.response?.data?.message || 'Something went wrong');
     }
   };
 
+  const set = key => value => setForm(prev => ({ ...prev, [key]: value }));
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
         <Text style={styles.backText}>← Back to login</Text>
       </TouchableOpacity>
 
-      <View style={styles.hero}>
-        <Text style={styles.heroTitle}>Become a Driver</Text>
+      <Hero style={styles.hero}>
+        <Text style={styles.heroTitle}>Become a Driver Partner</Text>
         <Text style={styles.heroSubtitle}>Fill in your details to get started</Text>
-      </View>
+      </Hero>
 
       {/* ACCOUNT */}
-      <Text style={styles.sectionTitle}>Account Details</Text>
+      <Text style={styles.sectionTitle}>Account details</Text>
 
       <TextInput
-        placeholder="Full Name"
+        placeholder="Full name"
         placeholderTextColor={C.textMuted}
         style={styles.input}
         value={form.fullName}
-        onChangeText={(t) => setForm({ ...form, fullName: t })}
+        onChangeText={set('fullName')}
       />
 
       <TextInput
@@ -107,8 +101,9 @@ const RegisterScreen = () => {
         placeholderTextColor={C.textMuted}
         style={styles.input}
         keyboardType="email-address"
+        autoCapitalize="none"
         value={form.email}
-        onChangeText={(t) => setForm({ ...form, email: t })}
+        onChangeText={set('email')}
       />
 
       <TextInput
@@ -117,19 +112,19 @@ const RegisterScreen = () => {
         style={styles.input}
         secureTextEntry
         value={form.password}
-        onChangeText={(t) => setForm({ ...form, password: t })}
+        onChangeText={set('password')}
       />
 
       {/* DRIVER DETAILS */}
-      <Text style={styles.sectionTitle}>Driver Details</Text>
+      <Text style={styles.sectionTitle}>Driver details</Text>
 
       <TextInput
-        placeholder="Phone Number"
+        placeholder="Phone number"
         placeholderTextColor={C.textMuted}
         style={styles.input}
         keyboardType="phone-pad"
         value={form.mobileNumber}
-        onChangeText={(t) => setForm({ ...form, mobileNumber: t })}
+        onChangeText={set('mobileNumber')}
       />
 
       <View style={styles.row}>
@@ -138,46 +133,41 @@ const RegisterScreen = () => {
           placeholderTextColor={C.textMuted}
           style={[styles.input, styles.half]}
           value={form.city}
-          onChangeText={(t) => setForm({ ...form, city: t })}
+          onChangeText={set('city')}
         />
         <TextInput
           placeholder="State"
           placeholderTextColor={C.textMuted}
           style={[styles.input, styles.half]}
           value={form.state}
-          onChangeText={(t) => setForm({ ...form, state: t })}
+          onChangeText={set('state')}
         />
       </View>
 
-      <Text style={styles.label}>Vehicle Type</Text>
+      <Text style={styles.label}>Vehicle type</Text>
       <View style={styles.typeRow}>
-        {['Hatchback', 'Sedan', 'SUV', 'MUV', 'Bike'].map((type) => (
+        {['Hatchback', 'Sedan', 'SUV', 'MUV', 'Bike'].map(type => (
           <TouchableOpacity
             key={type}
             style={[styles.typeChip, form.vehicleType === type && styles.typeChipActive]}
             onPress={() => setForm({ ...form, vehicleType: type })}
+            activeOpacity={0.8}
           >
-            <Text style={[styles.typeChipText, form.vehicleType === type && styles.typeChipTextActive]}>
+            <Text
+              style={[styles.typeChipText, form.vehicleType === type && styles.typeChipTextActive]}
+            >
               {type}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      <TextInput
-        placeholder="Vehicle Registration Number"
-        placeholderTextColor={C.textMuted}
-        style={styles.input}
-        value={form.registrationNumber}
-        onChangeText={(t) => setForm({ ...form, registrationNumber: t })}
+      <PrimaryButton
+        title="Next — Upload Documents"
+        icon="arrow-forward"
+        onPress={handleRegister}
+        style={styles.button}
       />
-
-      {/* BUTTON */}
-      <TouchableOpacity style={styles.button} onPress={handleRegister}>
-        <Text style={styles.btnText}>Next — Upload Documents</Text>
-      </TouchableOpacity>
-
-      <View style={{ height: 20 }} />
     </ScrollView>
   );
 };
@@ -191,7 +181,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
-    paddingTop: 20,
+    paddingBottom: 40,
   },
 
   backBtn: {
@@ -199,43 +189,43 @@ const styles = StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: 20,
     paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingVertical: 7,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: C.border,
+    ...C.shadow,
   },
   backText: {
     color: C.accent,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 
   hero: {
-    backgroundColor: C.primary,
-    borderRadius: 22,
-    paddingVertical: 24,
+    paddingVertical: 26,
     paddingHorizontal: 20,
-    marginBottom: 16,
-    ...C.shadow,
-    shadowOpacity: 0.22,
+    marginBottom: 10,
   },
   heroTitle: {
     color: '#fff',
-    fontSize: 24,
+    fontSize: 23,
     fontWeight: 'bold',
+    zIndex: 1,
   },
   heroSubtitle: {
     color: 'rgba(255,255,255,0.85)',
     fontSize: 13,
     marginTop: 4,
+    zIndex: 1,
   },
 
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: C.primary,
     fontWeight: 'bold',
-    marginTop: 16,
-    marginBottom: 6,
-    letterSpacing: 0.5,
+    marginTop: 18,
+    marginBottom: 8,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
 
   input: {
@@ -243,9 +233,10 @@ const styles = StyleSheet.create({
     color: C.text,
     padding: 14,
     borderRadius: 14,
-    marginVertical: 8,
+    marginVertical: 7,
     borderWidth: 1,
     borderColor: C.border,
+    ...C.shadow,
   },
 
   row: {
@@ -253,11 +244,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
 
+  half: {
+    width: '48.5%',
+  },
+
   label: {
     color: C.textSub,
-    fontSize: 14,
+    fontSize: 13,
     marginTop: 12,
-    marginBottom: 6,
+    marginBottom: 8,
     fontWeight: '600',
   },
 
@@ -271,7 +266,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.surface,
     paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: C.border,
   },
@@ -292,23 +287,8 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 
-  half: {
-    width: '48%',
-  },
-
   button: {
-    backgroundColor: C.accent,
-    padding: 16,
-    borderRadius: 30,
-    marginTop: 24,
-    alignItems: 'center',
-    ...C.shadow,
-    shadowOpacity: 0.28,
-  },
-
-  btnText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
+    marginTop: 26,
+    paddingVertical: 16,
   },
 });

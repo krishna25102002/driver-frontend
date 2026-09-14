@@ -1,219 +1,183 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
-  TouchableOpacity,
+  ScrollView,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { useNavigation } from '@react-navigation/native';
+import { getDriverProfile } from '../api';
 import { C } from '../theme';
+import { StackHeader } from './ui';
 
 const BankDetailsScreen = () => {
-  const bankDetails = {
-    accountHolder: 'Arjun Kumar',
-    bankName: 'HDFC Bank',
-    accountNumber: '123456789012',
-    ifsc: 'HDFC0001234',
-  };
+  const navigation = useNavigation();
+  const [accountHolder, setAccountHolder] = useState('');
 
-  const maskAccount = (acc) => {
-    return 'XXXXXX' + acc.slice(-4);
-  };
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await getDriverProfile();
+        const profile = res.data.driver || res.data;
+        setAccountHolder(profile.fullName || '');
+      } catch (err) {
+        console.log('BANK LOAD ERR:', err.response?.data || err);
+      }
+    };
+    load();
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => { /* back handled by stack */ }} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={24} color={C.primary} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Bank Details</Text>
-      </View>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <StackHeader
+          title="Bank Details"
+          subtitle="Payout account for earnings"
+          onBack={() => navigation.goBack()}
+        />
 
-      {/* Bank Card */}
-      <View style={styles.bankCard}>
-        <View style={styles.bankHeader}>
-          <View style={styles.bankIcon}>
-            <MaterialIcons name="account-balance" size={22} color="#fff" />
-          </View>
-          <View>
-            <Text style={styles.bankName}>{bankDetails.bankName}</Text>
-            <Text style={styles.bankTag}>Primary Account</Text>
+        {/* Identity card */}
+        <View style={styles.bankCard}>
+          <View style={styles.bankCardGlow} />
+          <View style={styles.bankHeader}>
+            <View style={styles.bankIcon}>
+              <MaterialIcons name="account-balance" size={22} color="#fff" />
+            </View>
+            <View>
+              <Text style={styles.bankName}>{accountHolder || 'Driver'}</Text>
+              <Text style={styles.bankTag}>Account holder</Text>
+            </View>
+            <View style={styles.pendingPill}>
+              <MaterialIcons name="hourglass-empty" size={12} color="#FFD9BC" />
+              <Text style={styles.pendingText}>Not set up</Text>
+            </View>
           </View>
         </View>
 
-        <View style={styles.divider} />
-
-        <Row icon="person" label="Account Holder" value={bankDetails.accountHolder} />
-        <Row icon="credit-card" label="Account Number" value={maskAccount(bankDetails.accountNumber)} last />
-        <Row icon="vpn-key" label="IFSC Code" value={bankDetails.ifsc} />
-      </View>
-
-      {/* Buttons */}
-      <TouchableOpacity style={styles.editBtn}>
-        <Text style={styles.editText}>Edit Details</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.addBtn}>
-        <MaterialIcons name="add" size={20} color={C.primary} />
-        <Text style={styles.addText}>Add New Account</Text>
-      </TouchableOpacity>
+        {/* Not-available state */}
+        <View style={styles.infoCard}>
+          <View style={styles.infoIcon}>
+            <MaterialIcons name="info-outline" size={26} color={C.info} />
+          </View>
+          <Text style={styles.infoTitle}>Payout account coming soon</Text>
+          <Text style={styles.infoText}>
+            Your earnings are credited to your bank account. Add your bank
+            details once payouts are enabled to receive your payments.
+          </Text>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
-const Row = ({ icon, label, value, last }) => (
-  <View style={[styles.row, !last && styles.rowBorder]}>
-    <View style={styles.left}>
-      <View style={styles.iconBox}>
-        <MaterialIcons name={icon} size={18} color={C.primary} />
-      </View>
-      <View style={{ marginLeft: 10 }}>
-        <Text style={styles.label}>{label}</Text>
-        <Text style={styles.value}>{value}</Text>
-      </View>
-    </View>
-
-    <MaterialIcons name="chevron-right" size={20} color={C.textMuted} />
-  </View>
-);
+export default BankDetailsScreen;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.bg,
+  },
+  content: {
     padding: 20,
+    paddingBottom: 40,
   },
 
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  backBtn: {
-    marginRight: 10,
-    padding: 4,
-    backgroundColor: C.surface,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: C.border,
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    color: C.text,
-    fontSize: 22,
-    fontWeight: 'bold',
-  },
-
-  // Bank Card
+  /* Identity card */
   bankCard: {
-    backgroundColor: C.surface,
-    borderRadius: 20,
+    backgroundColor: C.primary,
+    borderRadius: 24,
     padding: 18,
-    borderWidth: 1,
-    borderColor: C.border,
+    overflow: 'hidden',
     ...C.shadow,
+    shadowOpacity: 0.3,
   },
-
+  bankCardGlow: {
+    position: 'absolute',
+    top: -60,
+    right: -60,
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    backgroundColor: 'rgba(255,106,0,0.28)',
+  },
   bankHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
   },
   bankIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: C.primary,
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    zIndex: 1,
   },
   bankName: {
-    color: C.text,
-    fontWeight: 'bold',
-    fontSize: 17,
-  },
-  bankTag: {
-    color: C.textSub,
-    fontSize: 12,
-  },
-
-  divider: {
-    height: 1,
-    backgroundColor: C.border,
-    marginBottom: 8,
-  },
-
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  rowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
-  left: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  iconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: C.primarySoft,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  label: {
-    color: C.textSub,
-    fontSize: 12,
-  },
-  value: {
-    color: C.text,
-    fontSize: 15,
-    marginTop: 2,
-    fontWeight: '600',
-  },
-
-  // Buttons
-  editBtn: {
-    backgroundColor: C.accent,
-    padding: 15,
-    borderRadius: 30,
-    alignItems: 'center',
-    marginBottom: 10,
-    marginTop: 20,
-    ...C.shadow,
-    shadowOpacity: 0.28,
-  },
-  editText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 15,
+    fontSize: 17,
+    zIndex: 1,
+  },
+  bankTag: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    zIndex: 1,
+  },
+  pendingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 'auto',
+    zIndex: 1,
+  },
+  pendingText: {
+    color: '#FFD9BC',
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginLeft: 4,
   },
 
-  addBtn: {
-    flexDirection: 'row',
+  /* Info state */
+  infoCard: {
+    alignItems: 'center',
+    backgroundColor: C.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 24,
+    marginTop: 18,
+    ...C.shadow,
+  },
+  infoIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: C.infoSoft,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: C.accent,
-    padding: 15,
-    borderRadius: 30,
-    backgroundColor: C.surface,
+    marginBottom: 12,
   },
-  addText: {
-    color: C.accent,
+  infoTitle: {
+    color: C.text,
+    fontSize: 16,
     fontWeight: 'bold',
-    marginLeft: 6,
+  },
+  infoText: {
+    color: C.textSub,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
   },
 });
-
-export default BankDetailsScreen;
