@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uploadFiles as nativeUploadFiles } from '@dr.pogodin/react-native-fs';
 
-const API_BASE_URL = 'http://192.168.74.163:5000';
+const API_BASE_URL = 'http://192.168.0.9:5000';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -214,11 +214,26 @@ export const rejectBookingRequest = (requestId) =>
 export const getActionDriverUpcoming = () =>
   api.get('/api/action/drivers/bookings/upcoming');
 
+export const getActionDriverHistory = () =>
+  api.get('/api/action/drivers/bookings/history');
+
+export const cancelActionTrip = (bookingId, reason) =>
+  api.post(`/api/action/drivers/bookings/${bookingId}/cancel`, { reason });
+
 export const startActionTrip = (bookingId, otp) =>
   api.post(`/api/action/drivers/bookings/${bookingId}/start`, { otp });
 
 export const endActionTrip = (bookingId, otp) =>
   api.post(`/api/action/drivers/bookings/${bookingId}/end`, { otp });
+
+export const markActionEnRoute = (bookingId) =>
+  api.post(`/api/action/drivers/bookings/${bookingId}/en-route`);
+
+export const markActionArrived = (bookingId) =>
+  api.post(`/api/action/drivers/bookings/${bookingId}/arrived`);
+
+export const unavailableActionBooking = (bookingId, reason, description) =>
+  api.post(`/api/action/drivers/bookings/${bookingId}/unavailable`, { reason, description });
 
 // =====================
 // OTP

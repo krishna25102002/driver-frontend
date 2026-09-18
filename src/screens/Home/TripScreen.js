@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -23,9 +25,33 @@ import {
   acceptBookingRequest,
   rejectBookingRequest,
   getActionDriverUpcoming,
+  getActionDriverHistory,
+  markActionEnRoute,
+  markActionArrived,
+  unavailableActionBooking,
+  cancelActionTrip,
 } from '../../api';
 import { C } from '../../theme';
 import { Avatar, Pill, PrimaryButton } from '../../components/ui';
+
+const UNAVAILABILITY_REASONS = [
+  { key: 'DRIVER_VEHICLE_ISSUE', label: 'Vehicle issue' },
+  { key: 'DRIVER_HEALTH_EMERGENCY', label: 'Health emergency' },
+  { key: 'DRIVER_PERSONAL_EMERGENCY', label: 'Personal emergency' },
+  { key: 'DRIVER_ACCIDENT', label: 'Accident' },
+  { key: 'DRIVER_ROUTE_ISSUE', label: 'Route issue' },
+  { key: 'DRIVER_NETWORK_ISSUE', label: 'Network / app issue' },
+  { key: 'DRIVER_OTHER', label: 'Other' },
+];
+
+const CANCEL_REASONS = [
+  { key: 'CUSTOMER_CHANGED_MIND', label: 'Customer changed mind' },
+  { key: 'CUSTOMER_NO_SHOW', label: 'Customer not available' },
+  { key: 'DRIVER_EMERGENCY', label: 'Driver emergency' },
+  { key: 'WRONG_ADDRESS', label: 'Wrong pickup/drop address' },
+  { key: 'VEHICLE_ISSUE', label: 'Vehicle issue' },
+  { key: 'OTHER', label: 'Other' },
+];
 
 const LongTripTag = ({ value }) => (
   <Pill
@@ -45,9 +71,19 @@ const TripScreen = () => {
   const [activeTrip, setActiveTrip] = React.useState(null);
   const [activeStatus, setActiveStatus] = React.useState('');
   const [elapsed, setElapsed] = React.useState(0);
-  const [skipCount, setSkipCount] = React.useState(0);
   const [showSkipLimitMsg, setShowSkipLimitMsg] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
+  const [actionBusy, setActionBusy] = React.useState(false);
+  const [unavailableModal, setUnavailableModal] = React.useState(false);
+  const [unavailableReason, setUnavailableReason] = React.useState(null);
+  const [unavailableDesc, setUnavailableDesc] = React.useState('');
+
+  const [historyTrips, setHistoryTrips] = React.useState([]);
+
+  const [cancelModal, setCancelModal] = React.useState(false);
+  const [pendingCancelTrip, setPendingCancelTrip] = React.useState(null);
+  const [cancelReason, setCancelReason] = React.useState(null);
+  const [cancelDesc, setCancelDesc] = React.useState('');
 
   const tickElapsed = React.useCallback(() => {
     setActiveTrip(prev => {
@@ -155,6 +191,7 @@ const TripScreen = () => {
           id: running.id || running._id,
           bookingNumber: running.bookingNumber,
           status: 'ONGOING',
+          flowStatus: running.flowStatus,
           startedAt: running.startedAt || new Date().toISOString(),
           customerName:
             (running.customer && running.customer.name) || 'Customer',
@@ -166,6 +203,7 @@ const TripScreen = () => {
           id: startable.id || startable._id,
           bookingNumber: startable.bookingNumber,
           status: 'CONFIRMED',
+          flowStatus: startable.flowStatus,
           fromDate: startable.fromDate,
           customerName:
             (startable.customer && startable.customer.name) || 'Customer',
@@ -198,6 +236,76 @@ const TripScreen = () => {
       console.log('ACTION UPCOMING ERR:', err.response?.data || err);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const loadHistory = React.useCallback(async () => {
+    try {
+      const res = await getActionDriverHistory();
+      const list = (res.data?.bookings || [])
+        .filter(b => {
+          const s = String(b.status || b.bookingStatus || '').toUpperCase();
+          return ['COMPLETED', 'CANCELLED', 'CANCELLED'].includes(s);
+        })
+        .map(b => {
+          const customer = b.customer || {};
+          const cancelled = ['CANCELLED', 'Cancelled'].includes(b.status);
+          const cancelledByMe =
+            cancelled &&
+            (b.cancelledBy === 'Driver' || b.flowStatus === 'DRIVER_CANCELLED');
+          const cancelledByCustomer =
+            cancelled &&
+            !cancelledByMe &&
+            (b.cancelledBy === 'Customer' ||
+              b.cancelledBy === 'System' ||
+              b.flowStatus === 'CUSTOMER_CANCELLED' ||
+              b.flowStatus === 'SYSTEM_CANCELLED' ||
+              b.flowStatus === 'NO_SHOW');
+          const isComplete = String(b.status).toUpperCase() === 'COMPLETED';
+          const d = b.fromDate
+            ? new Date(b.fromDate).toLocaleDateString('en-IN', {
+                weekday: 'short',
+                day: 'numeric',
+                month: 'short',
+              })
+            : isComplete
+              ? new Date(b.completedAt || b.createdBookingAt).toLocaleDateString('en-IN', {
+                  day: 'numeric',
+                  month: 'short',
+                })
+              : '';
+          return {
+            id: b.id || b._id,
+            bookingNumber: b.bookingNumber,
+            status: b.status,
+            flowStatus: b.flowStatus,
+            cancelledBy: b.cancelledBy,
+            cancelReason: b.cancelReason,
+            cancelledAt: b.cancelledAt,
+            completedAt: b.completedAt,
+            category: cancelledByMe
+              ? 'byMe'
+              : cancelledByCustomer || cancelled
+                ? 'byCustomer'
+                : isComplete
+                  ? 'completed'
+                  : 'other',
+            user: customer.name || 'Customer',
+            avatar: (customer.name || 'C').substring(0, 2).toUpperCase(),
+            price: isComplete
+              ? `₹${b.actualFare || b.amount || 0}`
+              : `₹${b.amount || 0}`,
+            pickup: b.pickupAddress || 'Pickup location',
+            drop: b.dropAddress || 'Drop location',
+            distance: `${d} • ${b.startTime || ''}–${b.endTime || ''}`,
+            amount: b.amount || 0,
+            actualFare: b.actualFare || 0,
+            driverEarning: b.driverEarning || 0,
+          };
+        });
+      setHistoryTrips(list);
+    } catch (err) {
+      console.log('HISTORY ERR:', err.response?.data || err);
+    }
   }, []);
 
   const loadRequest = React.useCallback(async () => {
@@ -296,17 +404,19 @@ const TripScreen = () => {
     loadRequest();
     loadUpcoming();
     loadActionUpcoming();
+    loadHistory();
     const t = setInterval(() => {
       loadRequest();
       loadUpcoming();
       loadActionUpcoming();
+      loadHistory();
     }, 5000);
     const e = setInterval(tickElapsed, 1000);
     return () => {
       clearInterval(t);
       clearInterval(e);
     };
-  }, [loadRequest, loadUpcoming, loadActionUpcoming, tickElapsed]);
+  }, [loadRequest, loadUpcoming, loadActionUpcoming, loadHistory, tickElapsed]);
 
   const handleAccept = async () => {
     if (!tripRequest) return;
@@ -315,16 +425,21 @@ const TripScreen = () => {
         const res = await acceptDriverRequest(tripRequest.id);
         const newBooking = res.data?.booking;
         const bookingNumber = newBooking?.bookingNumber || tripRequest.id;
+        const bookingId = newBooking?._id || newBooking?.id || tripRequest.id;
         setTripRequest(null);
-        setSkipCount(0);
         setShowSkipLimitMsg(false);
         await loadUpcoming();
+        await loadHistory();
         Alert.alert('Request Accepted', 'Booking accepted. Contact the customer.');
-        navigation.navigate('TripOtp', { bookingNumber, source: 'driverRequest' });
+        navigation.navigate('TripOtp', {
+          bookingId,
+          bookingNumber,
+          purpose: 'start',
+          source: 'driverRequest',
+        });
       } else if (tripRequest.source === 'action') {
         await acceptBookingRequest(tripRequest.requestId);
         setTripRequest(null);
-        setSkipCount(0);
         setShowSkipLimitMsg(false);
         await loadUpcoming();
         await loadActionUpcoming();
@@ -335,11 +450,15 @@ const TripScreen = () => {
       } else {
         await acceptBooking(tripRequest.bookingNumber);
         setTripRequest(null);
-        setSkipCount(0);
         setShowSkipLimitMsg(false);
         await loadUpcoming();
+        await loadHistory();
         Alert.alert('Trip Accepted', 'Proceed to pickup location.');
-        navigation.navigate('TripOtp', { bookingNumber: tripRequest.bookingNumber });
+        navigation.navigate('TripOtp', {
+          bookingId: tripRequest.id,
+          bookingNumber: tripRequest.bookingNumber,
+          purpose: 'start',
+        });
       }
     } catch (err) {
       console.log('ACCEPT ERR:', err.response?.data || err);
@@ -350,24 +469,26 @@ const TripScreen = () => {
 
   const handleSkip = async () => {
     if (!tripRequest) return;
-    if (skipCount < 2) {
-      try {
-        if (tripRequest.source === 'driverRequest') {
-          await rejectDriverRequest(tripRequest.id);
-        } else if (tripRequest.source === 'action') {
-          await rejectBookingRequest(tripRequest.requestId);
-        } else {
-          await rejectBooking(tripRequest.bookingNumber);
-        }
-      } catch (err) {
-        console.log('SKIP ERR:', err.response?.data || err);
+    setShowSkipLimitMsg(false);
+    try {
+      if (tripRequest.source === 'driverRequest') {
+        await rejectDriverRequest(tripRequest.id);
+      } else if (tripRequest.source === 'action') {
+        await rejectBookingRequest(tripRequest.requestId);
+      } else {
+        await rejectBooking(tripRequest.bookingNumber);
       }
       setTripRequest(null);
-      setSkipCount(skipCount + 1);
-      setShowSkipLimitMsg(false);
       loadRequest();
-    } else {
-      setShowSkipLimitMsg(true);
+    } catch (err) {
+      console.log('SKIP ERR:', err.response?.data || err);
+      const msg =
+        err.response?.data?.message || err.message || 'Something went wrong.';
+      if (err.response?.data?.code === 'CANCELLATION_LIMIT_REACHED' || msg.includes('CANCELLATION_LIMIT')) {
+        setShowSkipLimitMsg(true);
+      } else {
+        Alert.alert('Cannot Skip', msg);
+      }
     }
   };
 
@@ -389,6 +510,144 @@ const TripScreen = () => {
     });
   };
 
+  const handleCancelTrip = () => {
+    if (!activeTrip || actionBusy) return;
+    setPendingCancelTrip(activeTrip);
+    setCancelModal(true);
+  };
+
+  const handleCancelUpcoming = trip => {
+    if (actionBusy) return;
+    setPendingCancelTrip(trip);
+    setCancelModal(true);
+  };
+
+  const closeCancelModal = () => {
+    setCancelModal(false);
+    setPendingCancelTrip(null);
+    setCancelReason(null);
+    setCancelDesc('');
+  };
+
+  const confirmCancelTrip = () => {
+    const target = pendingCancelTrip;
+    if (!target) return;
+    if (!cancelReason) {
+      Alert.alert('Select a reason', 'Please choose a reason for cancelling this booking.');
+      return;
+    }
+    const reason = cancelDesc && cancelDesc.trim()
+      ? `${cancelReason.label} — ${cancelDesc.trim()}`
+      : cancelReason.label;
+    Alert.alert(
+      'Cancel Trip',
+      `Cancelling booking ${target.bookingNumber || ''} will search for a replacement driver for the customer. You will no longer be assigned. Continue?`,
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Cancel Trip',
+          style: 'destructive',
+          onPress: async () => {
+            closeCancelModal();
+            setActionBusy(true);
+            try {
+              await cancelActionTrip(target.id, reason);
+              Alert.alert(
+                'Cancelled',
+                'We are searching for a replacement driver for the customer.'
+              );
+              if (activeTrip && activeTrip.id === target.id) {
+                setActiveTrip(null);
+                setActiveStatus('');
+              }
+              setUpcomingTrips(prev =>
+                prev.filter(t => (t.id || t.bookingNumber) !== (target.id || target.bookingNumber))
+              );
+              await loadActionUpcoming();
+              await loadUpcoming();
+              await loadHistory();
+            } catch (err) {
+              console.log('CANCEL TRIP ERR:', err.response?.data || err);
+              Alert.alert('Cannot Cancel', err.response?.data?.message || err.message || 'Something went wrong.');
+              setActionBusy(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleEnRoute = async () => {
+    if (!activeTrip || actionBusy) return;
+    setActionBusy(true);
+    try {
+      await markActionEnRoute(activeTrip.id);
+      setActiveTrip(prev => (prev ? { ...prev, flowStatus: 'DRIVER_EN_ROUTE' } : prev));
+      Alert.alert('On My Way', 'The customer can now see you heading to the pickup.');
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Could not mark en route');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const handleArrived = async () => {
+    if (!activeTrip || actionBusy) return;
+    setActionBusy(true);
+    try {
+      await markActionArrived(activeTrip.id);
+      setActiveTrip(prev => (prev ? { ...prev, flowStatus: 'DRIVER_ARRIVED' } : prev));
+      Alert.alert('Arrived', 'Marked as arrived. The customer no-show window has started.');
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Could not mark arrived');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const closeUnavailableModal = () => {
+    setUnavailableModal(false);
+    setUnavailableReason(null);
+    setUnavailableDesc('');
+  };
+
+  const confirmUnavailable = () => {
+    if (!unavailableReason) {
+      Alert.alert('Select a reason', 'Please choose why you cannot complete this booking.');
+      return;
+    }
+    Alert.alert(
+      'Unable to Complete Booking',
+      'This frees your schedule and we will search for a replacement driver. Continue?',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Report',
+          style: 'destructive',
+          onPress: async () => {
+            const bookingId = activeTrip ? activeTrip.id : null;
+            const reason = unavailableReason;
+            const description = unavailableDesc;
+            closeUnavailableModal();
+            if (!bookingId) return;
+            setActionBusy(true);
+            try {
+              await unavailableActionBooking(bookingId, reason, description);
+              setActiveTrip(null);
+              setActiveStatus('');
+              await loadActionUpcoming();
+              Alert.alert('Reported', 'A replacement driver will be assigned to the customer.');
+            } catch (err) {
+              Alert.alert('Error', err.response?.data?.message || 'Could not report unavailability');
+            } finally {
+              setActionBusy(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const formatElapsed = s => {
     const h = Math.floor(s / 3600);
     const m = Math.floor((s % 3600) / 60);
@@ -396,6 +655,73 @@ const TripScreen = () => {
     const pad = n => String(n).padStart(2, '0');
     return `${pad(h)}:${pad(m)}:${pad(sec)}`;
   };
+
+  const completedTrips = historyTrips.filter(t => t.category === 'completed');
+  const cancelledByCustomer = historyTrips.filter(t => t.category === 'byCustomer');
+  const cancelledByMe = historyTrips.filter(t => t.category === 'byMe');
+
+  const renderHistoryCard = trip => (
+    <View key={trip.id || trip.bookingNumber} style={styles.historyCard}>
+      <View style={styles.userRow}>
+        <Avatar name={trip.user} size={40} />
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={styles.userName}>{trip.user}</Text>
+          <Text style={styles.historyBooking}>#{trip.bookingNumber}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={styles.priceSmall}>{trip.price}</Text>
+          {trip.category === 'completed' ? (
+            <Pill color={C.success} bg={C.successSoft} icon="check-circle">
+              Completed
+            </Pill>
+          ) : (
+            <Pill color={C.danger} bg={C.dangerSoft} icon="cancel">
+              Cancelled
+            </Pill>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.upcomingRoute}>
+        <View style={styles.routeStop}>
+          <View style={[styles.routeDot, { backgroundColor: C.success }]} />
+          <Text style={styles.upcomingText} numberOfLines={1}>
+            {trip.pickup}
+          </Text>
+        </View>
+        <View style={styles.routeStop}>
+          <View style={[styles.routeDot, styles.routeDotRed]} />
+          <Text style={styles.upcomingText} numberOfLines={1}>
+            {trip.drop}
+          </Text>
+        </View>
+      </View>
+
+      {trip.category !== 'completed' && (
+        <View style={styles.reasonBox}>
+          <MaterialIcons name="info" size={15} color={C.danger} />
+          <Text style={styles.reasonText}>
+            {trip.cancelReason || 'No reason provided'}
+          </Text>
+        </View>
+      )}
+
+      <View style={styles.upcomingFoot}>
+        <Pill icon="schedule">{trip.distance}</Pill>
+        <Text style={styles.upcomingTime}>
+          {trip.category === 'completed'
+            ? `Completed ${new Date(trip.completedAt || trip.cancelledAt || Date.now()).toLocaleDateString('en-IN', {
+                day: 'numeric',
+                month: 'short',
+              })}`
+            : `On ${new Date(trip.cancelledAt || Date.now()).toLocaleDateString('en-IN', {
+                day: 'numeric',
+                month: 'short',
+              })}`}
+        </Text>
+      </View>
+    </View>
+  );
 
   const renderRequestCard = () => (
     <View style={styles.reqCard}>
@@ -445,7 +771,9 @@ const TripScreen = () => {
 
       {showSkipLimitMsg && (
         <Text style={styles.skipLimitMsg}>
-          You have reached the skip limit. Please accept this trip to continue.
+          You have reached the skip/cancellation limit. Please accept this trip
+          to continue. The limit resets automatically after the restriction
+          period.
         </Text>
       )}
 
@@ -458,20 +786,13 @@ const TripScreen = () => {
           style={{ flex: 1, marginRight: 10, backgroundColor: C.success }}
         />
         <TouchableOpacity
-          style={[styles.rejectBtn, showSkipLimitMsg && { opacity: 0.5 }]}
+          style={styles.rejectBtn}
           onPress={handleSkip}
-          disabled={showSkipLimitMsg}
           activeOpacity={0.8}
         >
           <MaterialIcons name="close" size={24} color={C.danger} />
         </TouchableOpacity>
       </View>
-
-      {!showSkipLimitMsg && skipCount > 0 && (
-        <Text style={styles.skipInfo}>
-          You skipped this trip. Skips left: {2 - skipCount}
-        </Text>
-      )}
     </View>
   );
 
@@ -555,12 +876,81 @@ const TripScreen = () => {
                       </TouchableOpacity>
                     </>
                   ) : (
-                    <TouchableOpacity style={styles.activeBtn} onPress={handleStartTrip} activeOpacity={0.88}>
-                      <Text style={styles.activeBtnText}>
-                        Start Trip{' '}
-                        <MaterialIcons name="directions-car" size={16} color="#fff" style={{ top: 2 }} />
-                      </Text>
-                    </TouchableOpacity>
+                    <>
+                      {activeTrip.flowStatus === 'DRIVER_EN_ROUTE' && (
+                        <View style={styles.enRouteNote}>
+                          <MaterialIcons name="navigation" size={16} color="#FFD9BC" />
+                          <Text style={styles.enRouteNoteText}>On my way to the pickup</Text>
+                        </View>
+                      )}
+                      {activeTrip.flowStatus === 'DRIVER_ARRIVED' && (
+                        <View style={styles.enRouteNote}>
+                          <MaterialIcons name="place" size={16} color={C.success} />
+                          <Text style={styles.enRouteNoteText}>
+                            You've arrived — waiting for the customer
+                          </Text>
+                        </View>
+                      )}
+                      {!['DRIVER_EN_ROUTE', 'DRIVER_ARRIVED'].includes(
+                        activeTrip.flowStatus
+                      ) && (
+                        <TouchableOpacity
+                          style={styles.outlineBtn}
+                          onPress={handleEnRoute}
+                          activeOpacity={0.88}
+                          disabled={actionBusy}
+                        >
+                          <Text style={styles.outlineBtnText}>
+                            On My Way{' '}
+                            <MaterialIcons name="navigation" size={16} color="#FFD9BC" style={{ top: 2 }} />
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      {activeTrip.flowStatus !== 'DRIVER_ARRIVED' && (
+                        <TouchableOpacity
+                          style={styles.activeBtn}
+                          onPress={handleArrived}
+                          activeOpacity={0.88}
+                          disabled={actionBusy}
+                        >
+                          <Text style={styles.activeBtnText}>
+                            I've Arrived{' '}
+                            <MaterialIcons name="place" size={16} color="#fff" style={{ top: 2 }} />
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      {!['DRIVER_EN_ROUTE', 'DRIVER_ARRIVED'].includes(
+                        activeTrip.flowStatus
+                      ) && (
+                        <TouchableOpacity
+                          style={styles.unavailableBtn}
+                          onPress={() => setUnavailableModal(true)}
+                          disabled={actionBusy}
+                        >
+                          <Text style={styles.unavailableBtnText}>Unable to Complete Booking</Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        style={styles.cancelBtn}
+                        onPress={handleCancelTrip}
+                        activeOpacity={0.88}
+                        disabled={actionBusy}
+                      >
+                        <Text style={styles.cancelBtnText}>
+                          <MaterialIcons name="close" size={16} color="#FF8A8A" style={{ top: 2 }} /> Cancel Trip
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.startBtn}
+                        onPress={handleStartTrip}
+                        activeOpacity={0.88}
+                      >
+                        <Text style={styles.startBtnText}>
+                          Start Trip{' '}
+                          <MaterialIcons name="directions-car" size={16} color={C.accent} style={{ top: 2 }} />
+                        </Text>
+                      </TouchableOpacity>
+                    </>
                   )}
                 </View>
               </View>
@@ -571,52 +961,59 @@ const TripScreen = () => {
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Upcoming trips</Text>
                 {upcomingTrips.map((trip, idx) => (
-                  <TouchableOpacity
+                  <View
                     key={`${trip.source}-${trip.id || trip.bookingNumber}`}
                     style={styles.upcomingCard}
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      if (trip.source === 'actionSchedule') {
-                        Alert.alert(
-                          'Scheduled Trip',
-                          'This trip starts on the scheduled date. It will appear under Active Trip then.'
-                        );
-                      } else {
-                        navigation.navigate('TripOtp', { bookingNumber: trip.bookingNumber });
-                      }
-                    }}
                   >
-                    <View style={styles.userRow}>
-                      <Avatar name={trip.user} size={46} />
-                      <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={styles.userName}>{trip.user}</Text>
-                        <View style={styles.ratingRow}>
-                          <MaterialIcons name="star" size={13} color={C.warning} />
-                          <Text style={styles.ratingText}>
-                            {trip.rating} • {trip.trips} trips
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        if (trip.source === 'actionSchedule') {
+                          Alert.alert(
+                            'Scheduled Trip',
+                            'This trip starts on the scheduled date. It will appear under Active Trip then.'
+                          );
+                        } else {
+                          navigation.navigate('TripOtp', {
+                            bookingId: trip.id,
+                            bookingNumber: trip.bookingNumber,
+                            purpose: 'start',
+                          });
+                        }
+                      }}
+                    >
+                      <View style={styles.userRow}>
+                        <Avatar name={trip.user} size={46} />
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={styles.userName}>{trip.user}</Text>
+                          <View style={styles.ratingRow}>
+                            <MaterialIcons name="star" size={13} color={C.warning} />
+                            <Text style={styles.ratingText}>
+                              {trip.rating} • {trip.trips} trips
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={styles.priceSmall}>{trip.price}</Text>
+                          <Text style={styles.estimate}>estimated</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.upcomingRoute}>
+                        <View style={styles.routeStop}>
+                          <View style={[styles.routeDot, { backgroundColor: C.success }]} />
+                          <Text style={styles.upcomingText} numberOfLines={1}>
+                            {trip.pickup}
+                          </Text>
+                        </View>
+                        <View style={styles.routeStop}>
+                          <View style={[styles.routeDot, styles.routeDotRed]} />
+                          <Text style={styles.upcomingText} numberOfLines={1}>
+                            {trip.drop}
                           </Text>
                         </View>
                       </View>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={styles.priceSmall}>{trip.price}</Text>
-                        <Text style={styles.estimate}>estimated</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.upcomingRoute}>
-                      <View style={styles.routeStop}>
-                        <View style={[styles.routeDot, { backgroundColor: C.success }]} />
-                        <Text style={styles.upcomingText} numberOfLines={1}>
-                          {trip.pickup}
-                        </Text>
-                      </View>
-                      <View style={styles.routeStop}>
-                        <View style={[styles.routeDot, styles.routeDotRed]} />
-                        <Text style={styles.upcomingText} numberOfLines={1}>
-                          {trip.drop}
-                        </Text>
-                      </View>
-                    </View>
+                    </TouchableOpacity>
 
                     <View style={styles.upcomingFoot}>
                       <Pill icon={trip.source === 'actionSchedule' ? 'event' : 'schedule'}>
@@ -624,13 +1021,198 @@ const TripScreen = () => {
                       </Pill>
                       <Text style={styles.upcomingTime}>Accepted {trip.acceptedAt}</Text>
                     </View>
-                  </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.cancelSmallBtn}
+                      onPress={() => handleCancelUpcoming(trip)}
+                      activeOpacity={0.8}
+                    >
+                      <MaterialIcons name="close" size={14} color="#FF8A8A" />
+                      <Text style={styles.cancelSmallBtnText}>Cancel this trip</Text>
+                    </TouchableOpacity>
+                  </View>
                 ))}
+              </View>
+            )}
+
+            {/* Completed trips */}
+            {completedTrips.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  Completed trips ({completedTrips.length})
+                </Text>
+                {completedTrips.map(renderHistoryCard)}
+              </View>
+            )}
+
+            {/* Cancelled by the customer */}
+            {cancelledByCustomer.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  Cancelled by customer ({cancelledByCustomer.length})
+                </Text>
+                {cancelledByCustomer.map(renderHistoryCard)}
+              </View>
+            )}
+
+            {/* Cancelled by me (driver) */}
+            {cancelledByMe.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  Cancelled by me ({cancelledByMe.length})
+                </Text>
+                {cancelledByMe.map(renderHistoryCard)}
               </View>
             )}
           </>
         )}
       </ScrollView>
+
+      <Modal
+        visible={unavailableModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closeUnavailableModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Unable to Complete Booking</Text>
+            <Text style={styles.modalSubtitle}>
+              Tell us why — we'll search for a replacement for the customer.
+            </Text>
+
+            {UNAVAILABILITY_REASONS.map(r => (
+              <TouchableOpacity
+                key={r.key}
+                style={[
+                  styles.reasonRow,
+                  unavailableReason === r.key && styles.reasonRowSelected,
+                ]}
+                onPress={() => setUnavailableReason(r.key)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons
+                  name={
+                    unavailableReason === r.key
+                      ? 'radio-button-checked'
+                      : 'radio-button-unchecked'
+                  }
+                  size={18}
+                  color={unavailableReason === r.key ? C.accent : C.textMuted}
+                />
+                <Text
+                  style={[
+                    styles.reasonText,
+                    unavailableReason === r.key && styles.reasonTextSelected,
+                  ]}
+                >
+                  {r.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Add a note (optional)"
+              placeholderTextColor={C.textMuted}
+              value={unavailableDesc}
+              onChangeText={setUnavailableDesc}
+              multiline
+            />
+
+            <View style={styles.modalRow}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                onPress={closeUnavailableModal}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.modalBtnText, { color: C.textSub }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalBtn}
+                onPress={confirmUnavailable}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.modalBtnText}>Submit</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Cancel Trip modal */}
+      <Modal
+        visible={cancelModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closeCancelModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Cancel Trip</Text>
+            <Text style={styles.modalSubtitle}>
+              This will search for a replacement driver for the customer. You will no longer be
+              assigned. Please select a reason.
+            </Text>
+
+            {CANCEL_REASONS.map(r => (
+              <TouchableOpacity
+                key={r.key}
+                style={[
+                  styles.reasonRow,
+                  cancelReason === r.key && styles.reasonRowSelected,
+                ]}
+                onPress={() => setCancelReason(r.key)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons
+                  name={
+                    cancelReason === r.key
+                      ? 'radio-button-checked'
+                      : 'radio-button-unchecked'
+                  }
+                  size={18}
+                  color={cancelReason === r.key ? C.accent : C.textMuted}
+                />
+                <Text
+                  style={[
+                    styles.reasonText,
+                    cancelReason === r.key && styles.reasonTextSelected,
+                  ]}
+                >
+                  {r.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Add a note (optional)"
+              placeholderTextColor={C.textMuted}
+              value={cancelDesc}
+              onChangeText={setCancelDesc}
+              multiline
+            />
+
+            <View style={styles.modalRow}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                onPress={closeCancelModal}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.modalBtnText, { color: C.textSub }]}>Close</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalBtn}
+                onPress={confirmCancelTrip}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.modalBtnText}>Cancel Trip</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -811,12 +1393,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  skipInfo: {
-    color: C.accent,
-    textAlign: 'center',
-    marginTop: 8,
-    fontSize: 13,
-  },
 
   /* ================= EMPTY ================= */
   emptyState: {
@@ -931,6 +1507,155 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
+  outlineBtn: {
+    borderWidth: 1.5,
+    borderColor: '#FFD9BC',
+    paddingVertical: 14,
+    borderRadius: 30,
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  outlineBtnText: {
+    color: '#FFD9BC',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  startBtn: {
+    borderWidth: 1.5,
+    borderColor: C.accent,
+    backgroundColor: 'rgba(255,106,0,0.12)',
+    paddingVertical: 14,
+    borderRadius: 30,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  startBtnText: {
+    color: C.accent,
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  unavailableBtn: {
+    borderWidth: 1.5,
+    borderColor: 'rgba(239,68,68,0.7)',
+    paddingVertical: 13,
+    borderRadius: 30,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  unavailableBtnText: {
+    color: '#FF8888',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  cancelBtn: {
+    borderWidth: 1.8,
+    borderColor: '#FF6B6B',
+    backgroundColor: 'rgba(255,50,50,0.12)',
+    paddingVertical: 13,
+    borderRadius: 30,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  cancelBtnText: {
+    color: '#FF8A8A',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  unavailableBtnText: {
+    color: '#FF8888',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  enRouteNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  enRouteNoteText: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+    marginLeft: 8,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: C.surface,
+    borderRadius: 20,
+    padding: 20,
+    ...C.shadow,
+  },
+  modalTitle: {
+    color: C.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  modalSubtitle: {
+    color: C.textSub,
+    fontSize: 13,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  reasonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 11,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  reasonRowSelected: {
+    backgroundColor: C.accentSoft,
+  },
+  reasonText: {
+    color: C.text,
+    fontSize: 14,
+    marginLeft: 10,
+  },
+  reasonTextSelected: {
+    color: C.accent,
+    fontWeight: 'bold',
+  },
+  modalInput: {
+    backgroundColor: C.inputBg,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: C.text,
+    marginTop: 8,
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  modalRow: {
+    flexDirection: 'row',
+    marginTop: 16,
+  },
+  modalBtn: {
+    flex: 1,
+    backgroundColor: C.accent,
+    borderRadius: 30,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  modalBtnCancel: {
+    backgroundColor: C.inputBg,
+    marginLeft: 0,
+    marginRight: 10,
+  },
+  modalBtnText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
 
   /* ================= UPCOMING ================= */
   upcomingCard: {
@@ -962,5 +1687,55 @@ const styles = StyleSheet.create({
     color: C.textMuted,
     fontSize: 12,
     fontStyle: 'italic',
+  },
+
+  cancelSmallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.2,
+    borderColor: 'rgba(239,68,68,0.6)',
+    borderRadius: 20,
+    paddingVertical: 8,
+    marginTop: 10,
+    backgroundColor: 'rgba(255,50,50,0.08)',
+  },
+  cancelSmallBtnText: {
+    color: '#FF8A8A',
+    fontWeight: 'bold',
+    fontSize: 13,
+    marginLeft: 5,
+  },
+
+  /* ================= HISTORY ================= */
+  historyCard: {
+    backgroundColor: C.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 14,
+    marginBottom: 10,
+    ...C.shadow,
+    shadowOpacity: 0.08,
+  },
+  historyBooking: {
+    color: C.textMuted,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  reasonBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.dangerSoft,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginTop: 8,
+  },
+  reasonText: {
+    flex: 1,
+    color: C.text,
+    fontSize: 12,
+    marginLeft: 6,
   },
 });

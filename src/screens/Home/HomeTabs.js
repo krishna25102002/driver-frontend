@@ -19,16 +19,28 @@ const HomeTabs = () => {
   const [selectedTab, setSelectedTab] = useState('Home');
 
   const renderScreen = () => {
-    switch (selectedTab) {
-      case 'Trips':
-        return <TripScreen />;
-      case 'EarningsScreen':
-        return <EarningsScreen />;
-      case 'SettingsScreen':
-        return <SettingsScreen />;
-      default:
-        return <Dashboard />;
-    }
+    return (
+      <View style={styles.screensWrap}>
+        {/* Keep Home + Trips mounted so accepted trips and dashboard data
+            persist when the user switches tabs. */}
+        <View style={[styles.tabScreen, selectedTab !== 'Home' && styles.tabScreenHidden]}>
+          <Dashboard />
+        </View>
+        <View style={[styles.tabScreen, selectedTab !== 'Trips' && styles.tabScreenHidden]}>
+          <TripScreen />
+        </View>
+        {selectedTab === 'EarningsScreen' && (
+          <View style={styles.tabScreen}>
+            <EarningsScreen />
+          </View>
+        )}
+        {selectedTab === 'SettingsScreen' && (
+          <View style={styles.tabScreen}>
+            <SettingsScreen />
+          </View>
+        )}
+      </View>
+    );
   };
 
   return (
@@ -70,6 +82,18 @@ const styles = StyleSheet.create({
   wrapper: {
     flex: 1,
     backgroundColor: C.bg,
+  },
+
+  screensWrap: {
+    flex: 1,
+  },
+
+  tabScreen: {
+    flex: 1,
+  },
+
+  tabScreenHidden: {
+    display: 'none',
   },
 
   bottomNav: {
