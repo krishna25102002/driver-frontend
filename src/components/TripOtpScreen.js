@@ -5,13 +5,13 @@ import {
   StyleSheet,
   SafeAreaView,
   ActivityIndicator,
-  Alert,
   TextInput,
   ScrollView,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { startActionTrip, endActionTrip } from '../api';
+import { useAlert } from './AlertProvider';
 import { C } from '../theme';
 import { Hero, PrimaryButton, StackHeader } from './ui';
 
@@ -20,6 +20,7 @@ const EXPIRY_MS = 5 * 60 * 1000;
 const TripOtpScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
+  const alert = useAlert();
   const { bookingId, bookingNumber, purpose } = route.params || {};
   const isEnd = purpose === 'end';
 
@@ -76,11 +77,11 @@ const TripOtpScreen = () => {
 
   const handleSubmit = async () => {
     if (!otp || otp.length !== 4) {
-      Alert.alert('Enter OTP', 'Please enter the 4-digit OTP from the customer.');
+      alert.warning('Enter OTP', 'Please enter the 4-digit OTP from the customer.');
       return;
     }
     if (!bookingId) {
-      Alert.alert('Error', 'Missing booking information.');
+      alert.error('Missing info', 'Missing booking information.');
       return;
     }
     setSubmitting(true);
@@ -88,14 +89,14 @@ const TripOtpScreen = () => {
       const call = isEnd ? endActionTrip : startActionTrip;
       const res = await call(bookingId, otp);
       clearTimer();
-      Alert.alert(
+      alert.success(
         isEnd ? 'Trip Completed' : 'Trip Started',
         res.data?.message || 'OTP verified successfully.'
       );
       navigation.navigate('HomeTabs');
     } catch (err) {
       console.log('OTP SUBMIT ERR:', err.response?.data || err);
-      Alert.alert('Error', err.response?.data?.message || 'Could not verify OTP');
+      alert.error('Could not verify OTP', err.response?.data?.message || 'Please try again.');
     } finally {
       setSubmitting(false);
     }

@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uploadFiles as nativeUploadFiles } from '@dr.pogodin/react-native-fs';
 
-const API_BASE_URL = 'http://192.168.0.9:5000';
+const API_BASE_URL = 'http://192.168.0.7:5000'; // Change this to your backend URL
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -216,6 +216,9 @@ export const getActionDriverUpcoming = () =>
 
 export const getActionDriverHistory = () =>
   api.get('/api/action/drivers/bookings/history');
+
+export const getDriverRejectedRequests = () =>
+  api.get('/api/action/drivers/bookings/rejected');
 
 export const cancelActionTrip = (bookingId, reason) =>
   api.post(`/api/action/drivers/bookings/${bookingId}/cancel`, { reason });

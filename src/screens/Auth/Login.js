@@ -5,18 +5,19 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ScrollView,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loginDriver, setAuthToken } from '../../api';
+import { useAlert } from '../../components/AlertProvider';
 import { C } from '../../theme';
 import { Hero, PrimaryButton, OutlineButton } from '../../components/ui';
 
 const Login = () => {
   const navigation = useNavigation();
+  const alert = useAlert();
   const [mobileNumber, setMobileNumber] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,7 +25,7 @@ const Login = () => {
 
   const handleLogin = async () => {
     if (!mobileNumber || !password) {
-      Alert.alert('Error', 'Please enter phone number and password');
+      alert.warning('Missing details', 'Please enter phone number and password');
       return;
     }
 
@@ -35,7 +36,7 @@ const Login = () => {
       const { token, driver } = res.data;
 
       if (!token) {
-        Alert.alert('Error', res.data?.message || 'Login failed');
+        alert.error('Login failed', res.data?.message || 'Please try again.');
         return;
       }
 
@@ -50,7 +51,7 @@ const Login = () => {
       } else if (driver && driver.verificationStatus === 'Rejected') {
         await AsyncStorage.removeItem('token');
         setAuthToken(null);
-        Alert.alert('Rejected', 'Your application was rejected by admin.');
+        alert.error('Application rejected', 'Your application was rejected by admin.');
       } else {
         navigation.reset({
           index: 0,
@@ -59,7 +60,7 @@ const Login = () => {
       }
     } catch (err) {
       console.log('LOGIN ERR:', err.response?.data || err);
-      Alert.alert('Error', err.response?.data?.message || 'Login failed');
+      alert.error('Login failed', err.response?.data?.message || 'Please try again.');
     } finally {
       setLoading(false);
     }
@@ -121,7 +122,7 @@ const Login = () => {
 
       {/* Forgot Password */}
       <TouchableOpacity
-        onPress={() => Alert.alert('Info', 'Contact support to reset your password')}
+        onPress={() => alert.info('Forgot password', 'Contact support to reset your password')}
       >
         <Text style={styles.forgot}>Forgot Password?</Text>
       </TouchableOpacity>

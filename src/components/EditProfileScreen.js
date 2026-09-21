@@ -6,17 +6,18 @@ import {
   SafeAreaView,
   TextInput,
   ActivityIndicator,
-  Alert,
   ScrollView,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
 import { getDriverProfile, updateDriverProfile, getVehicles } from '../api';
+import { useAlert } from './AlertProvider';
 import { C } from '../theme';
 import { StackHeader, PrimaryButton } from './ui';
 
 const EditProfileScreen = () => {
   const navigation = useNavigation();
+  const alert = useAlert();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [mobileNumber, setMobileNumber] = useState('');
@@ -76,7 +77,7 @@ const EditProfileScreen = () => {
 
   const handleSave = async () => {
     if (!form.fullName) {
-      Alert.alert('Error', 'Full name is required');
+      alert.warning('Missing name', 'Full name is required');
       return;
     }
 
@@ -90,10 +91,10 @@ const EditProfileScreen = () => {
     setSaving(true);
     try {
       await updateDriverProfile(payload);
-      Alert.alert('Success', 'Profile updated successfully!');
+      alert.success('Profile updated', 'Profile updated successfully!');
     } catch (err) {
       console.log('EDIT PROFILE SAVE ERR:', err.response?.data || err);
-      Alert.alert('Error', err.response?.data?.message || 'Could not update profile');
+      alert.error('Could not update', err.response?.data?.message || 'Could not update profile');
     } finally {
       setSaving(false);
     }

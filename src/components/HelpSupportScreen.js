@@ -8,15 +8,16 @@ import {
   TextInput,
   ScrollView,
   Linking,
-  Alert,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
+import { useAlert } from './AlertProvider';
 import { C } from '../theme';
 import { StackHeader, PrimaryButton } from './ui';
 
 const HelpSupportScreen = () => {
   const navigation = useNavigation();
+  const alert = useAlert();
   const [message, setMessage] = useState('');
 
   const faqs = [
@@ -43,7 +44,7 @@ const HelpSupportScreen = () => {
   };
 
   const submitIssue = () => {
-    Alert.alert('Submitted', 'Our team will get back to you shortly.');
+    alert.success('Submitted', 'Our team will get back to you shortly.');
     setMessage('');
   };
 

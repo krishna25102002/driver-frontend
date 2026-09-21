@@ -5,12 +5,12 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDriverProfile, clearStoredToken } from '../../api';
+import { useAlert } from '../../components/AlertProvider';
 import { C } from '../../theme';
 import { Hero } from '../../components/ui';
 
@@ -46,6 +46,7 @@ const steps = [
 
 const PendingApprovalScreen = () => {
   const navigation = useNavigation();
+  const alert = useAlert();
   const [checking, setChecking] = useState(false);
 
   const checkApproval = async () => {
@@ -65,20 +66,15 @@ const PendingApprovalScreen = () => {
       if (status === 'Rejected') {
         setChecking(false);
         await clearStoredToken();
-        Alert.alert(
+        alert.error(
           'Application rejected',
-          'Your application was rejected by the admin team.\nYou will be logged out.',
-          [
-            {
-              text: 'OK',
-              onPress: () =>
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'Login' }],
-                }),
-            },
-          ],
+          'Your application was rejected by the admin team.\nYou will be logged out.'
         );
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Login' }],
+        });
+        return;
       }
     } catch (err) {
       // Network hiccup — keep polling, next tick will retry.

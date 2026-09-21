@@ -7,12 +7,13 @@ import {
   SafeAreaView,
   ActivityIndicator,
   ScrollView,
-  Alert,
   Modal,
   TextInput,
+  Animated,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
+import { useAlert } from '../../components/AlertProvider';
 import {
   getCurrentRequest,
   getPendingDriverRequests,
@@ -26,6 +27,7 @@ import {
   rejectBookingRequest,
   getActionDriverUpcoming,
   getActionDriverHistory,
+  getDriverRejectedRequests,
   markActionEnRoute,
   markActionArrived,
   unavailableActionBooking,
@@ -33,6 +35,7 @@ import {
 } from '../../api';
 import { C } from '../../theme';
 import { Avatar, Pill, PrimaryButton } from '../../components/ui';
+import SkipCounterBanner from '../../components/SkipCounterBanner';
 
 const UNAVAILABILITY_REASONS = [
   { key: 'DRIVER_VEHICLE_ISSUE', label: 'Vehicle issue' },
@@ -64,14 +67,100 @@ const LongTripTag = ({ value }) => (
   </Pill>
 );
 
+// Animated section heading: icon chip + title + count badge that spring in,
+// with an accent bar that draws underneath the label.
+const AnimatedSectionTitle = ({ label, count, color, icon, index = 0 }) => {
+  const slide = React.useRef(new Animated.Value(0)).current;
+  const draw = React.useRef(new Animated.Value(0)).current;
+  const [barW, setBarW] = React.useState(0);
+
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.spring(slide, {
+        toValue: 1,
+        delay: index * 100,
+        friction: 7,
+        tension: 60,
+        useNativeDriver: true,
+      }),
+      Animated.timing(draw, {
+        toValue: 1,
+        duration: 700,
+        delay: 150 + index * 100,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [slide, draw, index]);
+
+  const slideOutX = slide.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-24, 0],
+  });
+  const countScale = slide.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.4, 1],
+  });
+
+  return (
+    <View style={styles.secHeadWrap}>
+      <Animated.View
+        style={[
+          styles.secHead,
+          {
+            opacity: slide,
+            transform: [{ translateX: slideOutX }],
+          },
+        ]}
+      >
+        <View style={[styles.secIcon, { backgroundColor: `${color}20` }]}>
+          <MaterialIcons name={icon} size={16} color={color} />
+        </View>
+        <Text style={[styles.secTitle, { color }]}>{label}</Text>
+        <Animated.View
+          style={[
+            styles.secCount,
+            {
+              backgroundColor: `${color}20`,
+              transform: [{ scale: countScale }],
+            },
+          ]}
+        >
+          <Text style={[styles.secCountText, { color }]}>{count}</Text>
+        </Animated.View>
+      </Animated.View>
+      <View
+        style={[styles.secBarTrack, { backgroundColor: `${color}18` }]}
+        onLayout={e => setBarW(e.nativeEvent.layout.width)}
+      >
+        <Animated.View
+          style={[
+            styles.secBarFill,
+            {
+              backgroundColor: color,
+              width: barW
+                ? draw.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, barW],
+                  })
+                : 0,
+            },
+          ]}
+        />
+      </View>
+    </View>
+  );
+};
+
 const TripScreen = () => {
   const navigation = useNavigation();
+  const alert = useAlert();
   const [tripRequest, setTripRequest] = React.useState(null);
   const [upcomingTrips, setUpcomingTrips] = React.useState([]);
   const [activeTrip, setActiveTrip] = React.useState(null);
   const [activeStatus, setActiveStatus] = React.useState('');
   const [elapsed, setElapsed] = React.useState(0);
   const [showSkipLimitMsg, setShowSkipLimitMsg] = React.useState(false);
+  const [skipInfo, setSkipInfo] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [actionBusy, setActionBusy] = React.useState(false);
   const [unavailableModal, setUnavailableModal] = React.useState(false);
@@ -79,6 +168,9 @@ const TripScreen = () => {
   const [unavailableDesc, setUnavailableDesc] = React.useState('');
 
   const [historyTrips, setHistoryTrips] = React.useState([]);
+
+  const [rejectedTrips, setRejectedTrips] = React.useState([]);
+  const [rejectedStrikes, setRejectedStrikes] = React.useState(null);
 
   const [cancelModal, setCancelModal] = React.useState(false);
   const [pendingCancelTrip, setPendingCancelTrip] = React.useState(null);
@@ -238,6 +330,32 @@ const TripScreen = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const loadRejected = React.useCallback(async () => {
+    try {
+      const res = await getDriverRejectedRequests();
+      const list = (res.data?.rejected || []).map(r => ({
+        id: r.id,
+        type: r.type,
+        bookingNumber: r.bookingNumber,
+        user: r.customer || 'Customer',
+        avatar: (r.customer || 'C').substring(0, 2).toUpperCase(),
+        price: `₹${r.amount || 0}`,
+        pickup: r.pickup || 'Pickup location',
+        drop: r.drop || 'Drop location',
+        duration: r.durationHours || 0,
+        startTime: r.startTime || '',
+        endTime: r.endTime || '',
+        fromDate: r.fromDate,
+        reason: r.reason || '',
+        rejectedAt: r.rejectedAt,
+      }));
+      setRejectedTrips(list);
+      setRejectedStrikes(res.data?.strikePolicy || null);
+    } catch (err) {
+      console.log('REJECTED ERR:', err.response?.data || err);
+    }
+  }, []);
+
   const loadHistory = React.useCallback(async () => {
     try {
       const res = await getActionDriverHistory();
@@ -317,6 +435,7 @@ const TripScreen = () => {
       if (actionRequests.length > 0) {
         const r = actionRequests[0];
         const customer = r.customer || {};
+        setSkipInfo(actionRes.data?.strikePolicy || null);
         setTripRequest({
           id: r.requestId,
           requestId: r.requestId,
@@ -348,6 +467,7 @@ const TripScreen = () => {
 
       if (driverRequest) {
         const customer = driverRequest.customerId || {};
+        setSkipInfo(driverReqRes.data?.strikePolicy || null);
         setTripRequest({
           id: driverRequest._id,
           source: 'driverRequest',
@@ -373,6 +493,7 @@ const TripScreen = () => {
 
       if (booking) {
         const customer = booking.customerId || {};
+        setSkipInfo(res.data?.strikePolicy || null);
         setTripRequest({
           id: booking._id,
           source: 'booking',
@@ -391,10 +512,12 @@ const TripScreen = () => {
         });
       } else {
         setTripRequest(null);
+        setSkipInfo(null);
       }
     } catch (err) {
       console.log('TRIP REQUEST ERR:', err.response?.data || err);
       setTripRequest(null);
+      setSkipInfo(null);
     } finally {
       setLoading(false);
     }
@@ -405,18 +528,20 @@ const TripScreen = () => {
     loadUpcoming();
     loadActionUpcoming();
     loadHistory();
+    loadRejected();
     const t = setInterval(() => {
       loadRequest();
       loadUpcoming();
       loadActionUpcoming();
       loadHistory();
+      loadRejected();
     }, 5000);
     const e = setInterval(tickElapsed, 1000);
     return () => {
       clearInterval(t);
       clearInterval(e);
     };
-  }, [loadRequest, loadUpcoming, loadActionUpcoming, loadHistory, tickElapsed]);
+  }, [loadRequest, loadUpcoming, loadActionUpcoming, loadHistory, loadRejected, tickElapsed]);
 
   const handleAccept = async () => {
     if (!tripRequest) return;
@@ -427,10 +552,11 @@ const TripScreen = () => {
         const bookingNumber = newBooking?.bookingNumber || tripRequest.id;
         const bookingId = newBooking?._id || newBooking?.id || tripRequest.id;
         setTripRequest(null);
+        setSkipInfo(null);
         setShowSkipLimitMsg(false);
         await loadUpcoming();
         await loadHistory();
-        Alert.alert('Request Accepted', 'Booking accepted. Contact the customer.');
+        alert.success('Request Accepted', 'Booking accepted. Contact the customer.');
         navigation.navigate('TripOtp', {
           bookingId,
           bookingNumber,
@@ -440,20 +566,22 @@ const TripScreen = () => {
       } else if (tripRequest.source === 'action') {
         await acceptBookingRequest(tripRequest.requestId);
         setTripRequest(null);
+        setSkipInfo(null);
         setShowSkipLimitMsg(false);
         await loadUpcoming();
         await loadActionUpcoming();
-        Alert.alert(
+        alert.success(
           'Booking Accepted',
           'Proceed to pickup on the scheduled date. Start the trip from the Active Trip card on the trip date.'
         );
       } else {
         await acceptBooking(tripRequest.bookingNumber);
         setTripRequest(null);
+        setSkipInfo(null);
         setShowSkipLimitMsg(false);
         await loadUpcoming();
         await loadHistory();
-        Alert.alert('Trip Accepted', 'Proceed to pickup location.');
+        alert.success('Trip Accepted', 'Proceed to pickup location.');
         navigation.navigate('TripOtp', {
           bookingId: tripRequest.id,
           bookingNumber: tripRequest.bookingNumber,
@@ -462,7 +590,7 @@ const TripScreen = () => {
       }
     } catch (err) {
       console.log('ACCEPT ERR:', err.response?.data || err);
-      Alert.alert('Error', err.response?.data?.message || 'Could not accept request');
+      alert.error('Could not accept request', err.response?.data?.message || 'Please try again.');
       setTripRequest(null);
     }
   };
@@ -479,6 +607,7 @@ const TripScreen = () => {
         await rejectBooking(tripRequest.bookingNumber);
       }
       setTripRequest(null);
+      setSkipInfo(null);
       loadRequest();
     } catch (err) {
       console.log('SKIP ERR:', err.response?.data || err);
@@ -486,10 +615,26 @@ const TripScreen = () => {
         err.response?.data?.message || err.message || 'Something went wrong.';
       if (err.response?.data?.code === 'CANCELLATION_LIMIT_REACHED' || msg.includes('CANCELLATION_LIMIT')) {
         setShowSkipLimitMsg(true);
+        alert.warning(
+          'You must accept this trip',
+          'You have reached your skip/cancel limit for now. Please accept this trip to keep earning — the limit resets once you accept.'
+        );
       } else {
-        Alert.alert('Cannot Skip', msg);
+        alert.info('Cannot skip', msg);
       }
     }
+  };
+
+  const handleSkipPress = () => {
+    if (skipInfo && skipInfo.forced) {
+      setShowSkipLimitMsg(true);
+      alert.warning(
+        'Accept required on this request',
+        `You've used ${skipInfo.strikes}/${skipInfo.limit} skip/cancel attempts. This request cannot be skipped — please accept it.`
+      );
+      return;
+    }
+    handleSkip();
   };
 
   const handleStartTrip = () => {
@@ -533,48 +678,45 @@ const TripScreen = () => {
     const target = pendingCancelTrip;
     if (!target) return;
     if (!cancelReason) {
-      Alert.alert('Select a reason', 'Please choose a reason for cancelling this booking.');
+      alert.warning('Select a reason', 'Please choose a reason for cancelling this booking.');
       return;
     }
     const reason = cancelDesc && cancelDesc.trim()
       ? `${cancelReason.label} — ${cancelDesc.trim()}`
       : cancelReason.label;
-    Alert.alert(
-      'Cancel Trip',
-      `Cancelling booking ${target.bookingNumber || ''} will search for a replacement driver for the customer. You will no longer be assigned. Continue?`,
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes, Cancel Trip',
-          style: 'destructive',
-          onPress: async () => {
-            closeCancelModal();
-            setActionBusy(true);
-            try {
-              await cancelActionTrip(target.id, reason);
-              Alert.alert(
-                'Cancelled',
-                'We are searching for a replacement driver for the customer.'
-              );
-              if (activeTrip && activeTrip.id === target.id) {
-                setActiveTrip(null);
-                setActiveStatus('');
-              }
-              setUpcomingTrips(prev =>
-                prev.filter(t => (t.id || t.bookingNumber) !== (target.id || target.bookingNumber))
-              );
-              await loadActionUpcoming();
-              await loadUpcoming();
-              await loadHistory();
-            } catch (err) {
-              console.log('CANCEL TRIP ERR:', err.response?.data || err);
-              Alert.alert('Cannot Cancel', err.response?.data?.message || err.message || 'Something went wrong.');
-              setActionBusy(false);
-            }
-          },
-        },
-      ]
-    );
+    alert.confirm({
+      type: 'warning',
+      title: 'Cancel Trip',
+      message: `Cancelling booking ${target.bookingNumber || ''} will search for a replacement driver for the customer. You will no longer be assigned. Continue?`,
+      cancelText: 'No',
+      confirmText: 'Yes, Cancel Trip',
+      destructive: true,
+      onConfirm: async () => {
+        closeCancelModal();
+        setActionBusy(true);
+        try {
+          await cancelActionTrip(target.id, reason);
+          alert.success(
+            'Cancelled',
+            'We are searching for a replacement driver for the customer.'
+          );
+          if (activeTrip && activeTrip.id === target.id) {
+            setActiveTrip(null);
+            setActiveStatus('');
+          }
+          setUpcomingTrips(prev =>
+            prev.filter(t => (t.id || t.bookingNumber) !== (target.id || target.bookingNumber))
+          );
+          await loadActionUpcoming();
+          await loadUpcoming();
+          await loadHistory();
+        } catch (err) {
+          console.log('CANCEL TRIP ERR:', err.response?.data || err);
+          alert.error('Cannot cancel', err.response?.data?.message || err.message || 'Something went wrong.');
+          setActionBusy(false);
+        }
+      },
+    });
   };
 
   const handleEnRoute = async () => {
@@ -583,9 +725,9 @@ const TripScreen = () => {
     try {
       await markActionEnRoute(activeTrip.id);
       setActiveTrip(prev => (prev ? { ...prev, flowStatus: 'DRIVER_EN_ROUTE' } : prev));
-      Alert.alert('On My Way', 'The customer can now see you heading to the pickup.');
+      alert.success('On My Way', 'The customer can now see you heading to the pickup.');
     } catch (err) {
-      Alert.alert('Error', err.response?.data?.message || 'Could not mark en route');
+      alert.error('Could not update', err.response?.data?.message || 'Please try again.');
     } finally {
       setActionBusy(false);
     }
@@ -597,9 +739,9 @@ const TripScreen = () => {
     try {
       await markActionArrived(activeTrip.id);
       setActiveTrip(prev => (prev ? { ...prev, flowStatus: 'DRIVER_ARRIVED' } : prev));
-      Alert.alert('Arrived', 'Marked as arrived. The customer no-show window has started.');
+      alert.success('Arrived', 'Marked as arrived. The customer no-show window has started.');
     } catch (err) {
-      Alert.alert('Error', err.response?.data?.message || 'Could not mark arrived');
+      alert.error('Could not update', err.response?.data?.message || 'Please try again.');
     } finally {
       setActionBusy(false);
     }
@@ -613,39 +755,36 @@ const TripScreen = () => {
 
   const confirmUnavailable = () => {
     if (!unavailableReason) {
-      Alert.alert('Select a reason', 'Please choose why you cannot complete this booking.');
+      alert.warning('Select a reason', 'Please choose why you cannot complete this booking.');
       return;
     }
-    Alert.alert(
-      'Unable to Complete Booking',
-      'This frees your schedule and we will search for a replacement driver. Continue?',
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes, Report',
-          style: 'destructive',
-          onPress: async () => {
-            const bookingId = activeTrip ? activeTrip.id : null;
-            const reason = unavailableReason;
-            const description = unavailableDesc;
-            closeUnavailableModal();
-            if (!bookingId) return;
-            setActionBusy(true);
-            try {
-              await unavailableActionBooking(bookingId, reason, description);
-              setActiveTrip(null);
-              setActiveStatus('');
-              await loadActionUpcoming();
-              Alert.alert('Reported', 'A replacement driver will be assigned to the customer.');
-            } catch (err) {
-              Alert.alert('Error', err.response?.data?.message || 'Could not report unavailability');
-            } finally {
-              setActionBusy(false);
-            }
-          },
-        },
-      ]
-    );
+    alert.confirm({
+      type: 'warning',
+      title: 'Unable to Complete Booking',
+      message: 'This frees your schedule and we will search for a replacement driver. Continue?',
+      cancelText: 'No',
+      confirmText: 'Yes, Report',
+      destructive: true,
+      onConfirm: async () => {
+        const bookingId = activeTrip ? activeTrip.id : null;
+        const reason = unavailableReason;
+        const description = unavailableDesc;
+        closeUnavailableModal();
+        if (!bookingId) return;
+        setActionBusy(true);
+        try {
+          await unavailableActionBooking(bookingId, reason, description);
+          setActiveTrip(null);
+          setActiveStatus('');
+          await loadActionUpcoming();
+          alert.success('Reported', 'A replacement driver will be assigned to the customer.');
+        } catch (err) {
+          alert.error('Could not report', err.response?.data?.message || 'Please try again.');
+        } finally {
+          setActionBusy(false);
+        }
+      },
+    });
   };
 
   const formatElapsed = s => {
@@ -659,6 +798,70 @@ const TripScreen = () => {
   const completedTrips = historyTrips.filter(t => t.category === 'completed');
   const cancelledByCustomer = historyTrips.filter(t => t.category === 'byCustomer');
   const cancelledByMe = historyTrips.filter(t => t.category === 'byMe');
+
+  const renderRejectedCard = trip => {
+    const d = trip.fromDate
+      ? new Date(trip.fromDate).toLocaleDateString('en-IN', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+        })
+      : '';
+    return (
+      <View key={String(trip.id)} style={styles.historyCard}>
+        <View style={styles.userRow}>
+          <Avatar name={trip.user} size={40} />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.userName}>{trip.user}</Text>
+            {trip.bookingNumber ? (
+              <Text style={styles.historyBooking}>#{trip.bookingNumber}</Text>
+            ) : (
+              <Text style={styles.historyBooking}>Trip request</Text>
+            )}
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={styles.priceSmall}>{trip.price}</Text>
+            <Pill color={C.danger} bg={C.dangerSoft} icon="cancel">
+              Rejected
+            </Pill>
+          </View>
+        </View>
+
+        <View style={styles.upcomingRoute}>
+          <View style={styles.routeStop}>
+            <View style={[styles.routeDot, { backgroundColor: C.success }]} />
+            <Text style={styles.upcomingText} numberOfLines={1}>
+              {trip.pickup}
+            </Text>
+          </View>
+          <View style={styles.routeStop}>
+            <View style={[styles.routeDot, styles.routeDotRed]} />
+            <Text style={styles.upcomingText} numberOfLines={1}>
+              {trip.drop}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.upcomingFoot}>
+          <Pill icon="schedule">
+            {d} {trip.startTime && trip.endTime ? `• ${trip.startTime}–${trip.endTime}` : ''}
+            {trip.duration ? ` • ${trip.duration} hrs` : ''}
+          </Pill>
+        </View>
+
+        {rejectedStrikes && (
+          <View style={{ marginTop: 12 }}>
+            <SkipCounterBanner
+              strikes={rejectedStrikes.strikes}
+              remaining={rejectedStrikes.remaining}
+              limit={rejectedStrikes.limit}
+              forced={rejectedStrikes.forced}
+            />
+          </View>
+        )}
+      </View>
+    );
+  };
 
   const renderHistoryCard = trip => (
     <View key={trip.id || trip.bookingNumber} style={styles.historyCard}>
@@ -769,11 +972,31 @@ const TripScreen = () => {
 
       <LongTripTag value={tripRequest.distance} />
 
+      {skipInfo && (
+        <View style={styles.skipRow}>
+          <Pill
+            color={skipInfo.forced ? C.danger : C.warning}
+            bg={skipInfo.forced ? C.dangerSoft : C.accentSoft}
+            icon="trending-down"
+          >
+            Skipped {skipInfo.strikes}/{skipInfo.limit}
+          </Pill>
+          {skipInfo.forced ? (
+            <Text style={styles.skipForcedText}>
+              Accept required — you must take this trip
+            </Text>
+          ) : (
+            <Text style={styles.skipHintText}>
+              Skips reset when you accept a trip
+            </Text>
+          )}
+        </View>
+      )}
+
       {showSkipLimitMsg && (
         <Text style={styles.skipLimitMsg}>
           You have reached the skip/cancellation limit. Please accept this trip
-          to continue. The limit resets automatically after the restriction
-          period.
+          to continue. The limit resets after you accept a trip.
         </Text>
       )}
 
@@ -787,7 +1010,7 @@ const TripScreen = () => {
         />
         <TouchableOpacity
           style={styles.rejectBtn}
-          onPress={handleSkip}
+          onPress={handleSkipPress}
           activeOpacity={0.8}
         >
           <MaterialIcons name="close" size={24} color={C.danger} />
@@ -969,7 +1192,7 @@ const TripScreen = () => {
                       activeOpacity={0.85}
                       onPress={() => {
                         if (trip.source === 'actionSchedule') {
-                          Alert.alert(
+                          alert.info(
                             'Scheduled Trip',
                             'This trip starts on the scheduled date. It will appear under Active Trip then.'
                           );
@@ -1038,19 +1261,41 @@ const TripScreen = () => {
             {/* Completed trips */}
             {completedTrips.length > 0 && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>
-                  Completed trips ({completedTrips.length})
-                </Text>
+                <AnimatedSectionTitle
+                  index={0}
+                  label="Completed trips"
+                  count={completedTrips.length}
+                  color={C.success}
+                  icon="check-circle"
+                />
                 {completedTrips.map(renderHistoryCard)}
+              </View>
+            )}
+
+            {/* Rejected by me */}
+            {rejectedTrips.length > 0 && (
+              <View style={styles.section}>
+                <AnimatedSectionTitle
+                  index={1}
+                  label="Rejected by me"
+                  count={rejectedTrips.length}
+                  color={C.danger}
+                  icon="cancel"
+                />
+                {rejectedTrips.map(renderRejectedCard)}
               </View>
             )}
 
             {/* Cancelled by the customer */}
             {cancelledByCustomer.length > 0 && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>
-                  Cancelled by customer ({cancelledByCustomer.length})
-                </Text>
+                <AnimatedSectionTitle
+                  index={2}
+                  label="Cancelled by customer"
+                  count={cancelledByCustomer.length}
+                  color={C.warning}
+                  icon="person-off"
+                />
                 {cancelledByCustomer.map(renderHistoryCard)}
               </View>
             )}
@@ -1058,9 +1303,13 @@ const TripScreen = () => {
             {/* Cancelled by me (driver) */}
             {cancelledByMe.length > 0 && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>
-                  Cancelled by me ({cancelledByMe.length})
-                </Text>
+                <AnimatedSectionTitle
+                  index={3}
+                  label="Cancelled by me"
+                  count={cancelledByMe.length}
+                  color={C.primary}
+                  icon="close"
+                />
                 {cancelledByMe.map(renderHistoryCard)}
               </View>
             )}
@@ -1267,6 +1516,52 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
+  /* animated section heading */
+  secHeadWrap: {
+    marginBottom: 4,
+  },
+  secHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  secIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  secTitle: {
+    flex: 1,
+    fontWeight: 'bold',
+    fontSize: 15,
+    letterSpacing: 0.4,
+  },
+  secCount: {
+    minWidth: 28,
+    height: 24,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  secCountText: {
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  secBarTrack: {
+    height: 3,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  secBarFill: {
+    height: 3,
+    borderRadius: 2,
+  },
+
   /* ================= REQUEST CARD ================= */
   reqCard: {
     backgroundColor: C.surface,
@@ -1378,6 +1673,27 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontWeight: 'bold',
   },
+  skipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    flexWrap: 'wrap',
+  },
+  skipForcedText: {
+    color: C.danger,
+    fontSize: 12,
+    fontWeight: 'bold',
+    flexShrink: 1,
+    marginLeft: 8,
+  },
+skipHintText: {
+    color: C.textSub,
+    fontSize: 12,
+    flexShrink: 1,
+    marginLeft: 8,
+  },
+
   buttonRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -6,13 +6,13 @@ import {
   StyleSheet,
   ScrollView,
   Image,
-  Alert,
 } from 'react-native';
 import { copyFile, CachesDirectoryPath, stat } from '@dr.pogodin/react-native-fs';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { uploadDocuments, describeError } from '../../api';
 import { useNavigation } from '@react-navigation/native';
+import { useAlert } from '../../components/AlertProvider';
 import { C } from '../../theme';
 import { Hero, PrimaryButton } from '../../components/ui';
 
@@ -47,6 +47,7 @@ const DocCard = ({ label, image, onPick, icon }) => (
 
 const UploadDocumentsScreen = () => {
   const navigation = useNavigation();
+  const alert = useAlert();
 
   const [aadhaarFront, setAadhaarFront] = useState(null);
   const [aadhaarBack, setAadhaarBack] = useState(null);
@@ -87,11 +88,11 @@ const UploadDocumentsScreen = () => {
   const uploadFiles = async () => {
     try {
       if (!aadhaarFront) {
-        Alert.alert('Error', 'Please upload Aadhaar Front');
+        alert.warning('Missing document', 'Please upload Aadhaar Front');
         return;
       }
       if (!licenseFront) {
-        Alert.alert('Error', 'Please upload Driving License Front');
+        alert.warning('Missing document', 'Please upload Driving License Front');
         return;
       }
 
@@ -131,12 +132,12 @@ const UploadDocumentsScreen = () => {
       console.log('UPLOAD ERROR DETAIL:', JSON.stringify(detail, null, 2));
       setLoading(false);
       if (detail.kind === 'server-responded') {
-        Alert.alert(
-          `Error ${detail.status}`,
-          detail.data?.message || 'Server rejected the upload'
+        alert.error(
+          `Upload failed`,
+          detail.data?.message || `Server rejected the upload (Error ${detail.status})`
         );
       } else {
-        Alert.alert(
+        alert.error(
           'Upload failed',
           `${detail.message}\nCould not reach ${detail.baseURL}${detail.url}`
         );

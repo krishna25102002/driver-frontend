@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Switch,
-  Alert,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -18,11 +17,13 @@ import {
   updateDriverStatus,
   updateNotification,
 } from '../../api';
+import { useAlert } from '../../components/AlertProvider';
 import { C } from '../../theme';
 import { Hero, Pill } from '../../components/ui';
 
 const SettingsScreen = () => {
   const navigation = useNavigation();
+  const alert = useAlert();
   const [isOnline, setIsOnline] = useState(true);
   const [notifications, setNotifications] = useState(true);
   const [profile, setProfile] = useState(null);
@@ -82,21 +83,22 @@ const SettingsScreen = () => {
     : 'DR';
 
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await AsyncStorage.clear();
-            navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
-          } catch (error) {
-            console.log('Logout Error:', error);
-          }
-        },
+    alert.confirm({
+      type: 'warning',
+      title: 'Logout',
+      message: 'Are you sure you want to logout?',
+      cancelText: 'Cancel',
+      confirmText: 'Logout',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await AsyncStorage.clear();
+          navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+        } catch (error) {
+          console.log('Logout Error:', error);
+        }
       },
-    ]);
+    });
   };
 
   return (
@@ -153,9 +155,9 @@ const SettingsScreen = () => {
             />
             <Text style={styles.heroStripText}>
               {vehicle?.vehicleType || '—'}
-              {vehicle?.registrationNumber
+              {/* {vehicle?.registrationNumber
                 ? ` • ${vehicle.registrationNumber.toUpperCase()}`
-                : ''}
+                : ''} */}
             </Text>
           </View>
         </View>
@@ -164,12 +166,12 @@ const SettingsScreen = () => {
       {/* Availability */}
       <Text style={styles.sectionLabel}>Availability</Text>
       <View style={styles.group}>
-        <SettingToggle
+        {/* <SettingToggle
           icon="location-on"
           label="Online status"
           value={isOnline}
           onValueChange={toggleStatus}
-        />
+        /> */}
         <View style={styles.groupDivider} />
         <SettingToggle
           icon="notifications"

@@ -19,6 +19,34 @@ import {
 } from '../../api';
 import { C } from '../../theme';
 import { Avatar, Hero, Pill } from '../../components/ui';
+import SkipCounterBanner from '../../components/SkipCounterBanner';
+import usePendingTripRequest from '../../hooks/usePendingTripRequest';
+
+const formatElapsed = (s) => {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(h)}:${pad(m)}:${pad(sec)}`;
+};
+
+const roundRupee = (n) => Math.round(n);
+
+const liveBill = (seconds, perHourRate = 210) => {
+  const mins = Math.max(1, Math.ceil(seconds / 60));
+  const billableHours = Math.max(1, Math.ceil(mins / 30) / 2);
+  const base = roundRupee(billableHours * perHourRate);
+  const platform = roundRupee(Math.max(50, base * 0.15));
+  const gst = roundRupee((base + platform) * 0.18);
+  return {
+    billableHours,
+    base,
+    platform,
+    gst,
+    total: base + platform + gst,
+    perHourRate,
+  };
+};
 
 const Pulse = ({ color = C.accent, size = 18 }) => {
   const anim = useRef(new Animated.Value(0)).current;
@@ -77,12 +105,35 @@ const Pulse = ({ color = C.accent, size = 18 }) => {
   );
 };
 
-const Dashboard = () => {
+const Dashboard = ({ onGoToTrips }) => {
   const [isOnline, setIsOnline] = useState(true);
   const [profile, setProfile] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [booking, setBooking] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const startedAtRef = useRef(null);
+
+  const { tripRequest } = usePendingTripRequest();
+
+  useEffect(() => {
+    startedAtRef.current = booking?.startedAt || null;
+  }, [booking?.startedAt]);
+
+  useEffect(() => {
+    if (booking?.bookingStatus !== 'ONGOING' || !startedAtRef.current) return undefined;
+    const tick = () => {
+      const base = startedAtRef.current;
+      if (base) {
+        setElapsed(
+          Math.max(0, Math.floor((Date.now() - new Date(base).getTime()) / 1000))
+        );
+      }
+    };
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [booking?.bookingStatus]);
 
   const loadData = useCallback(async () => {
     try {
@@ -145,6 +196,7 @@ const Dashboard = () => {
       : dashboard?.rating != null
         ? Number(dashboard.rating).toFixed(1)
         : '5.0';
+  const ratingCount = profile?.ratingCount ?? dashboard?.ratingCount ?? 0;
 
   return (
     <ScrollView
@@ -217,7 +269,11 @@ const Dashboard = () => {
           <View style={styles.heroStripDivider} />
           <View style={styles.heroStripItem}>
             <Text style={styles.heroStripValue}>{rating} ★</Text>
-            <Text style={styles.heroStripLabel}>Driver rating</Text>
+            <Text style={styles.heroStripLabel}>
+              {ratingCount > 0
+                ? `${ratingCount} rating${ratingCount === 1 ? '' : 's'}`
+                : 'Driver rating'}
+            </Text>
           </View>
         </View>
       </Hero>
@@ -234,11 +290,17 @@ const Dashboard = () => {
                 {booking.bookingNumber}
               </Pill>
               <Text style={styles.tripTitle}>
-                {booking.bookingStatus === 'Accepted'
-                  ? 'Trip accepted — head to pickup'
-                  : booking.bookingStatus === 'Reached Pickup'
-                    ? 'Reached pickup'
-                    : 'Trip in progress'}
+                {booking.bookingStatus === 'CONFIRMED'
+                  ? 'Trip confirmed — head to pickup'
+                  : booking.bookingStatus === 'ONGOING'
+                    ? 'Trip in progress'
+                    : booking.bookingStatus === 'Accepted'
+                      ? 'Trip accepted — head to pickup'
+                      : booking.bookingStatus === 'Reached Pickup'
+                        ? 'Reached pickup'
+                        : booking.bookingStatus === 'Trip Started'
+                          ? 'Trip in progress'
+                          : 'Trip in progress'}
               </Text>
             </View>
             <Icon name="directions-car" size={26} color="rgba(255,255,255,0.9)" />
@@ -257,12 +319,97 @@ const Dashboard = () => {
             </Text>
           </View>
 
-          <View style={styles.fareRow}>
-            <Text style={styles.fareLabel}>Estimated fare</Text>
-            <Text style={styles.fareValue}>
-              ₹{booking.estimatedFare || booking.fare}
+          {booking.bookingStatus === 'ONGOING' && booking.startedAt ? (
+            <>
+              <View style={styles.timerRow}>
+                <Icon name="timer" size={18} color="#FFD9BC" />
+                <Text style={styles.timerText}>{formatElapsed(elapsed)}</Text>
+                <View style={styles.timerPulse} />
+              </View>
+              <View style={styles.liveBillRow}>
+                <Text style={styles.fareLabel}>
+                  Running bill (~{liveBill(elapsed, booking.perHourRate).billableHours} hrs)
+                </Text>
+                <Text style={styles.liveBillValue}>
+                  ₹{liveBill(elapsed, booking.perHourRate).total.toLocaleString('en-IN')}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <View style={styles.fareRow}>
+              <Text style={styles.fareLabel}>Estimated fare</Text>
+              <Text style={styles.fareValue}>
+                ₹{booking.estimatedFare || booking.fare}
+              </Text>
+            </View>
+          )}
+
+          {onGoToTrips && (
+            <TouchableOpacity style={styles.viewTripsBtn} onPress={onGoToTrips} activeOpacity={0.85}>
+              <Icon name="flag" size={16} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.viewTripsText}>View in Trips</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : tripRequest ? (
+        <View style={styles.reqCard}>
+          <View style={styles.reqCardTop}>
+            <Pill color={C.accent} bg={C.accentSoft} icon="bolt">
+              New trip request
+            </Pill>
+            <Pulse color={C.accent} size={14} />
+          </View>
+
+          <View style={styles.reqUserRow}>
+            <Avatar name={tripRequest.user || 'Customer'} size={44} />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.reqUserName}>{tripRequest.user}</Text>
+              <Text style={styles.reqUserSub}>{tripRequest.price} • estimated</Text>
+            </View>
+          </View>
+
+          <View style={styles.reqRouteRow}>
+            <View style={[styles.reqRouteDot, { backgroundColor: C.success }]} />
+            <Text style={styles.reqRouteText} numberOfLines={1}>
+              {tripRequest.pickup}
             </Text>
           </View>
+          <View style={styles.reqRouteRow}>
+            <View style={[styles.reqRouteDot, { backgroundColor: C.danger }]} />
+            <Text style={styles.reqRouteText} numberOfLines={1}>
+              {tripRequest.drop}
+            </Text>
+          </View>
+
+          {tripRequest.source === 'action' && (
+            <Text style={styles.reqScheduleText}>
+              {tripRequest.fromDate
+                ? new Date(tripRequest.fromDate).toLocaleDateString('en-IN', {
+                    weekday: 'short',
+                    day: 'numeric',
+                    month: 'short',
+                  })
+                : ''}{' '}
+              • {tripRequest.startTime || ''}–{tripRequest.endTime || ''} •{' '}
+              {tripRequest.estimatedDurationHours || 0} hrs
+            </Text>
+          )}
+
+          {onGoToTrips && (
+            <TouchableOpacity
+              style={styles.reqGoBtn}
+              onPress={onGoToTrips}
+              activeOpacity={0.85}
+            >
+              <Icon
+                name="assignment-turned-in"
+                size={16}
+                color="#fff"
+                style={{ marginRight: 6 }}
+              />
+              <Text style={styles.reqGoText}>View & Accept in Trips</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         <View style={styles.tripCard}>
@@ -296,6 +443,18 @@ const Dashboard = () => {
               <Text style={styles.goOnlineText}>Go Online</Text>
             </TouchableOpacity>
           )}
+        </View>
+      )}
+
+      {/* ============ SKIP BALANCE ============ */}
+      {dashboard?.strikePolicy && Number(dashboard.strikePolicy.strikes) > 0 && (
+        <View style={styles.skipWrap}>
+          <SkipCounterBanner
+            strikes={dashboard.strikePolicy.strikes}
+            remaining={dashboard.strikePolicy.remaining}
+            limit={dashboard.strikePolicy.limit}
+            forced={dashboard.strikePolicy.forced}
+          />
         </View>
       )}
 
@@ -511,6 +670,58 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
   },
+  timerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  timerText: {
+    color: '#fff',
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: 2,
+    marginLeft: 8,
+    fontVariant: ['tabular-nums'],
+  },
+  timerPulse: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginLeft: 10,
+    backgroundColor: '#FFD9BC',
+  },
+  liveBillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.15)',
+  },
+  liveBillValue: {
+    color: '#FFD9BC',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  viewTripsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+    paddingVertical: 12,
+    borderRadius: 30,
+    backgroundColor: C.accent,
+  },
+  viewTripsText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
 
   /* empty trip card */
   tripCardTop: {
@@ -551,6 +762,82 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 15,
+  },
+
+  /* pending request card */
+  reqCard: {
+    backgroundColor: C.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.accentBorder,
+    borderTopWidth: 3,
+    borderTopColor: C.accent,
+    padding: 16,
+    ...C.shadow,
+    shadowOpacity: 0.1,
+  },
+  reqCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  reqUserRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  reqUserName: {
+    color: C.text,
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  reqUserSub: {
+    color: C.textSub,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  reqRouteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  reqRouteDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 10,
+  },
+  reqRouteText: {
+    color: C.text,
+    fontSize: 14,
+    flexShrink: 1,
+  },
+  reqScheduleText: {
+    color: C.accent,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 10,
+  },
+  reqGoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+    paddingVertical: 12,
+    borderRadius: 30,
+    backgroundColor: C.accent,
+    ...C.shadow,
+    shadowOpacity: 0.22,
+  },
+  reqGoText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+
+  skipWrap: {
+    marginTop: 16,
   },
 
   /* stats row */

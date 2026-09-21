@@ -24,7 +24,7 @@ const HomeTabs = () => {
         {/* Keep Home + Trips mounted so accepted trips and dashboard data
             persist when the user switches tabs. */}
         <View style={[styles.tabScreen, selectedTab !== 'Home' && styles.tabScreenHidden]}>
-          <Dashboard />
+          <Dashboard onGoToTrips={() => setSelectedTab('Trips')} />
         </View>
         <View style={[styles.tabScreen, selectedTab !== 'Trips' && styles.tabScreenHidden]}>
           <TripScreen />

@@ -6,16 +6,17 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { registerDriver, setAuthToken } from '../../api';
+import { useAlert } from '../../components/AlertProvider';
 import { C } from '../../theme';
 import { Hero, PrimaryButton } from '../../components/ui';
 
 const RegisterScreen = () => {
   const navigation = useNavigation();
+  const alert = useAlert();
 
   const [form, setForm] = useState({
     fullName: '',
@@ -30,12 +31,12 @@ const RegisterScreen = () => {
   const handleRegister = async () => {
     try {
       if (!form.fullName || !form.email || !form.password) {
-        Alert.alert('Error', 'Please fill account details');
+        alert.warning('Missing account details', 'Please fill account details');
         return;
       }
 
       if (!form.mobileNumber || !form.city || !form.vehicleType) {
-        Alert.alert('Error', 'Please fill driver details');
+        alert.warning('Missing driver details', 'Please fill driver details');
         return;
       }
 
@@ -58,12 +59,12 @@ const RegisterScreen = () => {
         setAuthToken(res.data.token);
       }
 
-      Alert.alert('Success', 'Driver Registered');
+      alert.success('Driver Registered', 'Your account is ready. Upload your documents to get approved.');
 
       navigation.navigate('UploadDocuments', { driverId });
     } catch (err) {
       console.log('REGISTER ERR:', err.response?.data || err);
-      Alert.alert('Error', err.response?.data?.message || 'Something went wrong');
+      alert.error('Registration failed', err.response?.data?.message || 'Something went wrong');
     }
   };
 
