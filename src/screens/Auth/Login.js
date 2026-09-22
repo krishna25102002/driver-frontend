@@ -122,7 +122,7 @@ const Login = () => {
 
       {/* Forgot Password */}
       <TouchableOpacity
-        onPress={() => alert.info('Forgot password', 'Contact support to reset your password')}
+        onPress={() => navigation.navigate('ForgotPassword')}
       >
         <Text style={styles.forgot}>Forgot Password?</Text>
       </TouchableOpacity>

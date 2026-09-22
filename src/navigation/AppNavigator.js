@@ -4,6 +4,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import Login from '../screens/Auth/Login';
 import RegisterScreen from '../screens/Auth/RegisterScreen';
+import ForgotPasswordScreen from '../screens/Auth/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/Auth/ResetPasswordScreen';
 import UploadDocumentsScreen from '../screens/Auth/UploadDocumentsScreen';
 import PendingApprovalScreen from '../screens/Auth/PendingApprovalScreen';
 import HomeTabs from '../screens/Home/HomeTabs';
@@ -26,6 +28,8 @@ const AppNavigator = () => {
         }}
       >
         <Stack.Screen name="Login" component={Login} />
+        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+        <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
         <Stack.Screen name="HomeTabs" component={HomeTabs} />
         <Stack.Screen name="Register" component={RegisterScreen} />
         <Stack.Screen name="UploadDocuments" component={UploadDocumentsScreen} />

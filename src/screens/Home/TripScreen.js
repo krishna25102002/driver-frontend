@@ -28,24 +28,18 @@ import {
   getActionDriverUpcoming,
   getActionDriverHistory,
   getDriverRejectedRequests,
-  markActionEnRoute,
-  markActionArrived,
-  unavailableActionBooking,
   cancelActionTrip,
 } from '../../api';
 import { C } from '../../theme';
 import { Avatar, Pill, PrimaryButton } from '../../components/ui';
 import SkipCounterBanner from '../../components/SkipCounterBanner';
-
-const UNAVAILABILITY_REASONS = [
-  { key: 'DRIVER_VEHICLE_ISSUE', label: 'Vehicle issue' },
-  { key: 'DRIVER_HEALTH_EMERGENCY', label: 'Health emergency' },
-  { key: 'DRIVER_PERSONAL_EMERGENCY', label: 'Personal emergency' },
-  { key: 'DRIVER_ACCIDENT', label: 'Accident' },
-  { key: 'DRIVER_ROUTE_ISSUE', label: 'Route issue' },
-  { key: 'DRIVER_NETWORK_ISSUE', label: 'Network / app issue' },
-  { key: 'DRIVER_OTHER', label: 'Other' },
-];
+import LiveTrackingMap from '../../components/LiveTrackingMap';
+import useDriverLocation from '../../hooks/useDriverLocation';
+import useLiveBookingSocket, {
+  SOCKET_CONNECTED,
+  SOCKET_RECONNECTING,
+  SOCKET_DISCONNECTED,
+} from '../../hooks/useLiveBookingSocket';
 
 const CANCEL_REASONS = [
   { key: 'CUSTOMER_CHANGED_MIND', label: 'Customer changed mind' },
@@ -163,9 +157,6 @@ const TripScreen = () => {
   const [skipInfo, setSkipInfo] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [actionBusy, setActionBusy] = React.useState(false);
-  const [unavailableModal, setUnavailableModal] = React.useState(false);
-  const [unavailableReason, setUnavailableReason] = React.useState(null);
-  const [unavailableDesc, setUnavailableDesc] = React.useState('');
 
   const [historyTrips, setHistoryTrips] = React.useState([]);
 
@@ -176,6 +167,21 @@ const TripScreen = () => {
   const [pendingCancelTrip, setPendingCancelTrip] = React.useState(null);
   const [cancelReason, setCancelReason] = React.useState(null);
   const [cancelDesc, setCancelDesc] = React.useState('');
+
+  // =====================
+  // Live location tracking (driver -> booking room)
+  // Only active while a booking is assigned; stops when the trip ends/clears.
+  // =====================
+  const activeBookingId = activeTrip?.id || null;
+  const trackingSocket = useLiveBookingSocket({
+    bookingId: activeBookingId,
+    role: 'driver',
+    enabled: !!activeBookingId,
+  });
+  const driverLoc = useDriverLocation({
+    enabled: !!activeBookingId,
+    onPosition: trackingSocket.sendLocation,
+  });
 
   const tickElapsed = React.useCallback(() => {
     setActiveTrip(prev => {
@@ -216,17 +222,21 @@ const TripScreen = () => {
         };
       });
 
-      // Merge in scheduled action bookings (CONFIRMED, not today) so the
-      // driver can see future acting-driver trips too.
+      // Merge in scheduled action bookings (CONFIRMED, future dates only) so the
+      // driver can see future acting-driver trips too. Trips whose date has
+      // already arrived (today or earlier) belong in the active "today's trip"
+      // card — putting them here too would duplicate overnight trips that wrap
+      // past midnight (e.g. 11:55 PM -> 2:55 AM).
       try {
         const actionRes = await getActionDriverUpcoming();
-        const todayStr = new Date().toDateString();
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
         const actionList = (actionRes.data?.bookings || [])
           .filter(
             b =>
               b.status === 'CONFIRMED' &&
               b.fromDate &&
-              new Date(b.fromDate).toDateString() !== todayStr
+              new Date(b.fromDate) >= startOfToday
           )
           .map(b => {
             const customer = b.customer || {};
@@ -268,13 +278,17 @@ const TripScreen = () => {
     try {
       const res = await getActionDriverUpcoming();
       const list = res.data?.bookings || [];
-      // A CONFIRMED trip on today's date -> Start button; ONGOING -> End button + timer.
-      const todayStr = new Date().toDateString();
+      // A CONFIRMED trip whose date has arrived (today, or an overnight trip
+      // that started yesterday and wraps past midnight) -> Start button;
+      // ONGOING -> End button + timer. Only future-dated CONFIRMED trips are
+      // "upcoming".
+      const endOfToday = new Date();
+      endOfToday.setHours(23, 59, 59, 999);
       const startable = list.find(
         b =>
           b.status === 'CONFIRMED' &&
           b.fromDate &&
-          new Date(b.fromDate).toDateString() === todayStr
+          new Date(b.fromDate) <= endOfToday
       );
       const running = list.find(b => b.status === 'ONGOING');
 
@@ -288,6 +302,8 @@ const TripScreen = () => {
           customerName:
             (running.customer && running.customer.name) || 'Customer',
           pickup: running.pickupAddress || 'Pickup location',
+          pickupLocation: running.pickupLocation || null,
+          dropLocation: running.dropLocation || null,
         });
         setActiveStatus('ONGOING');
       } else if (startable) {
@@ -300,6 +316,8 @@ const TripScreen = () => {
           customerName:
             (startable.customer && startable.customer.name) || 'Customer',
           pickup: startable.pickupAddress || 'Pickup location',
+          pickupLocation: startable.pickupLocation || null,
+          dropLocation: startable.dropLocation || null,
           startTime: startable.startTime || '',
         });
         setActiveStatus('CONFIRMED');
@@ -719,74 +737,6 @@ const TripScreen = () => {
     });
   };
 
-  const handleEnRoute = async () => {
-    if (!activeTrip || actionBusy) return;
-    setActionBusy(true);
-    try {
-      await markActionEnRoute(activeTrip.id);
-      setActiveTrip(prev => (prev ? { ...prev, flowStatus: 'DRIVER_EN_ROUTE' } : prev));
-      alert.success('On My Way', 'The customer can now see you heading to the pickup.');
-    } catch (err) {
-      alert.error('Could not update', err.response?.data?.message || 'Please try again.');
-    } finally {
-      setActionBusy(false);
-    }
-  };
-
-  const handleArrived = async () => {
-    if (!activeTrip || actionBusy) return;
-    setActionBusy(true);
-    try {
-      await markActionArrived(activeTrip.id);
-      setActiveTrip(prev => (prev ? { ...prev, flowStatus: 'DRIVER_ARRIVED' } : prev));
-      alert.success('Arrived', 'Marked as arrived. The customer no-show window has started.');
-    } catch (err) {
-      alert.error('Could not update', err.response?.data?.message || 'Please try again.');
-    } finally {
-      setActionBusy(false);
-    }
-  };
-
-  const closeUnavailableModal = () => {
-    setUnavailableModal(false);
-    setUnavailableReason(null);
-    setUnavailableDesc('');
-  };
-
-  const confirmUnavailable = () => {
-    if (!unavailableReason) {
-      alert.warning('Select a reason', 'Please choose why you cannot complete this booking.');
-      return;
-    }
-    alert.confirm({
-      type: 'warning',
-      title: 'Unable to Complete Booking',
-      message: 'This frees your schedule and we will search for a replacement driver. Continue?',
-      cancelText: 'No',
-      confirmText: 'Yes, Report',
-      destructive: true,
-      onConfirm: async () => {
-        const bookingId = activeTrip ? activeTrip.id : null;
-        const reason = unavailableReason;
-        const description = unavailableDesc;
-        closeUnavailableModal();
-        if (!bookingId) return;
-        setActionBusy(true);
-        try {
-          await unavailableActionBooking(bookingId, reason, description);
-          setActiveTrip(null);
-          setActiveStatus('');
-          await loadActionUpcoming();
-          alert.success('Reported', 'A replacement driver will be assigned to the customer.');
-        } catch (err) {
-          alert.error('Could not report', err.response?.data?.message || 'Please try again.');
-        } finally {
-          setActionBusy(false);
-        }
-      },
-    });
-  };
-
   const formatElapsed = s => {
     const h = Math.floor(s / 3600);
     const m = Math.floor((s % 3600) / 60);
@@ -1100,59 +1050,6 @@ const TripScreen = () => {
                     </>
                   ) : (
                     <>
-                      {activeTrip.flowStatus === 'DRIVER_EN_ROUTE' && (
-                        <View style={styles.enRouteNote}>
-                          <MaterialIcons name="navigation" size={16} color="#FFD9BC" />
-                          <Text style={styles.enRouteNoteText}>On my way to the pickup</Text>
-                        </View>
-                      )}
-                      {activeTrip.flowStatus === 'DRIVER_ARRIVED' && (
-                        <View style={styles.enRouteNote}>
-                          <MaterialIcons name="place" size={16} color={C.success} />
-                          <Text style={styles.enRouteNoteText}>
-                            You've arrived — waiting for the customer
-                          </Text>
-                        </View>
-                      )}
-                      {!['DRIVER_EN_ROUTE', 'DRIVER_ARRIVED'].includes(
-                        activeTrip.flowStatus
-                      ) && (
-                        <TouchableOpacity
-                          style={styles.outlineBtn}
-                          onPress={handleEnRoute}
-                          activeOpacity={0.88}
-                          disabled={actionBusy}
-                        >
-                          <Text style={styles.outlineBtnText}>
-                            On My Way{' '}
-                            <MaterialIcons name="navigation" size={16} color="#FFD9BC" style={{ top: 2 }} />
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                      {activeTrip.flowStatus !== 'DRIVER_ARRIVED' && (
-                        <TouchableOpacity
-                          style={styles.activeBtn}
-                          onPress={handleArrived}
-                          activeOpacity={0.88}
-                          disabled={actionBusy}
-                        >
-                          <Text style={styles.activeBtnText}>
-                            I've Arrived{' '}
-                            <MaterialIcons name="place" size={16} color="#fff" style={{ top: 2 }} />
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                      {!['DRIVER_EN_ROUTE', 'DRIVER_ARRIVED'].includes(
-                        activeTrip.flowStatus
-                      ) && (
-                        <TouchableOpacity
-                          style={styles.unavailableBtn}
-                          onPress={() => setUnavailableModal(true)}
-                          disabled={actionBusy}
-                        >
-                          <Text style={styles.unavailableBtnText}>Unable to Complete Booking</Text>
-                        </TouchableOpacity>
-                      )}
                       <TouchableOpacity
                         style={styles.cancelBtn}
                         onPress={handleCancelTrip}
@@ -1174,6 +1071,83 @@ const TripScreen = () => {
                         </Text>
                       </TouchableOpacity>
                     </>
+                  )}
+                </View>
+
+                {/* Live location tracking */}
+                <View style={styles.liveCard}>
+                  <View style={styles.liveHead}>
+                    <Text style={styles.liveTitle}>
+                      <MaterialIcons name="radar" size={15} color={C.accent} /> Live location
+                    </Text>
+                    <View style={styles.liveStatusRow}>
+                      <View
+                        style={[
+                          styles.liveStatusDot,
+                          { backgroundColor: trackingSocket.connection === SOCKET_CONNECTED ? C.success : C.danger },
+                        ]}
+                      />
+                      <Text style={styles.liveStatusText}>
+                        {trackingSocket.connection === SOCKET_CONNECTED
+                          ? 'Live'
+                          : trackingSocket.connection === SOCKET_RECONNECTING
+                            ? 'Reconnecting…'
+                            : trackingSocket.connection === SOCKET_DISCONNECTED
+                              ? 'Offline'
+                              : 'Tracking off'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.liveStatusRow}>
+                    <MaterialIcons
+                      name={
+                        driverLoc.status === 'denied'
+                          ? 'location-off'
+                          : driverLoc.status.includes('gps')
+                            ? 'gps-fixed'
+                            : driverLoc.status === 'searching'
+                              ? 'gps-not-fixed'
+                              : 'my-location'
+                      }
+                      size={14}
+                      color={driverLoc.status === 'ready' ? C.success : C.textMuted}
+                    />
+                    <Text style={styles.liveStatusText}>
+                      {driverLoc.status === 'denied'
+                        ? 'Location permission denied'
+                        : driverLoc.status.includes('gps')
+                          ? 'GPS is off'
+                          : driverLoc.status === 'searching'
+                            ? 'Locating…'
+                            : driverLoc.status === 'ready'
+                              ? `Sharing live location${driverLoc.position && driverLoc.position.accuracy ? ` (±${Math.round(driverLoc.position.accuracy)}m)` : ''}`
+                              : 'Tracking not active'}
+                    </Text>
+                  </View>
+
+                  {driverLoc.status === 'denied' ? (
+                    <TouchableOpacity style={styles.liveRetryBtn} onPress={() => driverLoc.start()} activeOpacity={0.85}>
+                      <Text style={styles.liveRetryText}>Enable location</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {driverLoc.position ? (
+                    <LiveTrackingMap
+                      style={styles.liveMap}
+                      driverLocation={driverLoc.position}
+                      pickup={activeTrip.pickupLocation}
+                      drop={activeTrip.dropLocation}
+                      showRoute
+                      showRecenterButton={false}
+                    />
+                  ) : (
+                    <View style={styles.liveMapPlaceholder}>
+                      <MaterialIcons name="my-location" size={22} color={C.textMuted} />
+                      <Text style={styles.liveMapPlaceholderText}>
+                        Waiting for GPS — your customer will see you here once you start sharing.
+                      </Text>
+                    </View>
                   )}
                 </View>
               </View>
@@ -1316,78 +1290,6 @@ const TripScreen = () => {
           </>
         )}
       </ScrollView>
-
-      <Modal
-        visible={unavailableModal}
-        transparent
-        animationType="fade"
-        onRequestClose={closeUnavailableModal}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Unable to Complete Booking</Text>
-            <Text style={styles.modalSubtitle}>
-              Tell us why — we'll search for a replacement for the customer.
-            </Text>
-
-            {UNAVAILABILITY_REASONS.map(r => (
-              <TouchableOpacity
-                key={r.key}
-                style={[
-                  styles.reasonRow,
-                  unavailableReason === r.key && styles.reasonRowSelected,
-                ]}
-                onPress={() => setUnavailableReason(r.key)}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons
-                  name={
-                    unavailableReason === r.key
-                      ? 'radio-button-checked'
-                      : 'radio-button-unchecked'
-                  }
-                  size={18}
-                  color={unavailableReason === r.key ? C.accent : C.textMuted}
-                />
-                <Text
-                  style={[
-                    styles.reasonText,
-                    unavailableReason === r.key && styles.reasonTextSelected,
-                  ]}
-                >
-                  {r.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Add a note (optional)"
-              placeholderTextColor={C.textMuted}
-              value={unavailableDesc}
-              onChangeText={setUnavailableDesc}
-              multiline
-            />
-
-            <View style={styles.modalRow}>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalBtnCancel]}
-                onPress={closeUnavailableModal}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.modalBtnText, { color: C.textSub }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalBtn}
-                onPress={confirmUnavailable}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.modalBtnText}>Submit</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Cancel Trip modal */}
       <Modal
@@ -1823,19 +1725,6 @@ skipHintText: {
     fontWeight: 'bold',
     fontSize: 16,
   },
-  outlineBtn: {
-    borderWidth: 1.5,
-    borderColor: '#FFD9BC',
-    paddingVertical: 14,
-    borderRadius: 30,
-    alignItems: 'center',
-    marginTop: 14,
-  },
-  outlineBtnText: {
-    color: '#FFD9BC',
-    fontWeight: 'bold',
-    fontSize: 15,
-  },
   startBtn: {
     borderWidth: 1.5,
     borderColor: C.accent,
@@ -1850,19 +1739,6 @@ skipHintText: {
     fontWeight: 'bold',
     fontSize: 15,
   },
-  unavailableBtn: {
-    borderWidth: 1.5,
-    borderColor: 'rgba(239,68,68,0.7)',
-    paddingVertical: 13,
-    borderRadius: 30,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  unavailableBtnText: {
-    color: '#FF8888',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
   cancelBtn: {
     borderWidth: 1.8,
     borderColor: '#FF6B6B',
@@ -1876,26 +1752,6 @@ skipHintText: {
     color: '#FF8A8A',
     fontWeight: 'bold',
     fontSize: 15,
-  },
-  unavailableBtnText: {
-    color: '#FF8888',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  enRouteNote: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  enRouteNoteText: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 13,
-    marginLeft: 8,
-    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
@@ -2048,10 +1904,84 @@ skipHintText: {
     paddingVertical: 8,
     marginTop: 8,
   },
-  reasonText: {
-    flex: 1,
+
+  liveCard: {
+    marginTop: 12,
+    backgroundColor: C.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 14,
+  },
+
+  liveHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+
+  liveTitle: {
     color: C.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  liveStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+
+  liveStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+
+  liveStatusText: {
+    color: C.textMuted,
     fontSize: 12,
-    marginLeft: 6,
+    flexShrink: 1,
+  },
+
+  liveRetryBtn: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    backgroundColor: C.accentSoft,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+
+  liveRetryText: {
+    color: C.accent,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  liveMap: {
+    height: 190,
+    marginTop: 12,
+  },
+
+  liveMapPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+    marginTop: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: C.border,
+    borderRadius: 14,
+    backgroundColor: C.background,
+  },
+
+  liveMapPlaceholderText: {
+    color: C.textMuted,
+    fontSize: 11,
+    marginTop: 6,
+    textAlign: 'center',
   },
 });

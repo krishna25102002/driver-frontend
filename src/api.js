@@ -4,6 +4,10 @@ import { uploadFiles as nativeUploadFiles } from '@dr.pogodin/react-native-fs';
 
 const API_BASE_URL = 'http://192.168.0.7:5000'; // Change this to your backend URL
 
+// Socket.IO connects to the same origin. Use the plain base URL (not the axios
+// instance) so the socket client manages its own auth/lifecycle.
+export const SOCKET_BASE_URL = API_BASE_URL;
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
@@ -61,6 +65,15 @@ export const registerDriver = (data) =>
 
 export const loginDriver = (data) =>
   api.post('/api/auth/login', data);
+
+export const forgotDriverPassword = (data) =>
+  api.post('/api/auth/forgotPassword', data);
+
+export const verifyDriverResetOtp = (data) =>
+  api.post('/api/auth/verifyResetOtp', data);
+
+export const resetDriverPassword = (data) =>
+  api.post('/api/auth/resetPassword', data);
 
 // =====================
 // Driver Profile / Status
@@ -264,5 +277,22 @@ export const updateSettings = (data) =>
 
 export const updateNotification = (notifications) =>
   api.put('/api/settings/notification', { notifications });
+
+// =====================
+// Live tracking + map (Geoapify proxied by backend)
+// =====================
+// Backend fetches the Geoapify style JSON and injects the API key, so the key
+// itself never lives in the app. Returns the style object for MapLibre.
+export const getMapStyle = async (style = 'osm-bright') => {
+  const res = await api.get(`/api/map/style?style=${encodeURIComponent(style)}`);
+  return res.data;
+};
+
+// Server-side Geoapify routing -> { features:[{ geometry:{coordinates:[lng,lat][]} }] }
+export const fetchRouteOnMap = (from, to, mode = 'drive') =>
+  api.post('/api/map/route', { ...from, ...to, mode });
+
+export const geocodeAddress = (text) =>
+  api.get(`/api/map/geocode?text=${encodeURIComponent(text)}`);
 
 export default api;
