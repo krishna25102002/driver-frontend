@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  View,
   Text,
   TextInput,
   StyleSheet,
@@ -10,6 +9,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
 import { forgotDriverPassword } from '../../api';
 import { useAlert } from '../../components/AlertProvider';
+import { FadeInUp } from '../../components/Animations';
 import { C } from '../../theme';
 import { Hero, PrimaryButton, StackHeader } from '../../components/ui';
 
@@ -45,21 +45,25 @@ const ForgotPasswordScreen = () => {
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      <StackHeader
-        title="Forgot Password"
-        subtitle="Reset your DriveGo driver password"
-        onBack={() => navigation.goBack()}
-      />
+      <FadeInUp>
+        <StackHeader
+          title="Forgot Password"
+          subtitle="Reset your DriveGo driver password"
+          onBack={() => navigation.goBack()}
+        />
+      </FadeInUp>
 
-      <Hero style={styles.hero}>
-        <Text style={styles.heroTitle}>Account recovery</Text>
-        <Text style={styles.heroSub}>
-          We'll email a one-time verification code to your registered address so
-          you can set a new password.
-        </Text>
-      </Hero>
+      <FadeInUp delay={80}>
+        <Hero style={styles.hero}>
+          <Text style={styles.heroTitle}>Account recovery</Text>
+          <Text style={styles.heroSub}>
+            We'll email a one-time verification code to your registered address so
+            you can set a new password.
+          </Text>
+        </Hero>
+      </FadeInUp>
 
-      <View style={styles.inputContainer}>
+      <FadeInUp delay={160} style={styles.inputContainer}>
         <Icon name="email" size={20} color={C.accent} />
         <TextInput
           placeholder="Registered email address"
@@ -71,15 +75,17 @@ const ForgotPasswordScreen = () => {
           value={email}
           onChangeText={setEmail}
         />
-      </View>
+      </FadeInUp>
 
-      <PrimaryButton
-        title="Send OTP"
-        icon="mail"
-        loading={loading}
-        onPress={handleSend}
-        style={styles.sendBtn}
-      />
+      <FadeInUp delay={230}>
+        <PrimaryButton
+          title="Send OTP"
+          icon="mail"
+          loading={loading}
+          onPress={handleSend}
+          style={styles.sendBtn}
+        />
+      </FadeInUp>
     </ScrollView>
   );
 };

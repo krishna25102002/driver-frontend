@@ -19,6 +19,7 @@ import {
 } from '../../api';
 import { C } from '../../theme';
 import { Avatar, Hero, Pill } from '../../components/ui';
+import { FadeInUp } from '../../components/Animations';
 import SkipCounterBanner from '../../components/SkipCounterBanner';
 import usePendingTripRequest from '../../hooks/usePendingTripRequest';
 
@@ -215,25 +216,26 @@ const Dashboard = ({ onGoToTrips }) => {
       }
     >
       {/* ============ HERO ============ */}
-      <Hero style={styles.hero}>
-        <View style={styles.heroTop}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.greeting}>{greeting()}</Text>
-            <Text style={styles.name} numberOfLines={1}>
-              {profile?.fullName || 'Driver'}
-            </Text>
-            <View style={styles.locationRow}>
-              <Icon name="location-on" size={15} color="#FFD9BC" />
-              <Text style={styles.location}>
-                {profile?.city
-                  ? `${profile.city}, ${profile.state || ''}`
-                  : 'Ready for trips'}
+      <FadeInUp>
+        <Hero style={styles.hero}>
+          <View style={styles.heroTop}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.greeting}>{greeting()}</Text>
+              <Text style={styles.name} numberOfLines={1}>
+                {profile?.fullName || 'Driver'}
               </Text>
+              <View style={styles.locationRow}>
+                <Icon name="location-on" size={15} color="#FFD9BC" />
+                <Text style={styles.location}>
+                  {profile?.city
+                    ? `${profile.city}, ${profile.state || ''}`
+                    : 'Ready for trips'}
+                </Text>
+              </View>
             </View>
-          </View>
 
-          <Avatar name={profile?.fullName || 'Driver'} size={62} />
-        </View>
+            <Avatar name={profile?.fullName || 'Driver'} size={62} />
+          </View>
 
         {/* Availability */}
         <View style={styles.availRow}>
@@ -279,6 +281,7 @@ const Dashboard = ({ onGoToTrips }) => {
           </View>
         </View>
       </Hero>
+      </FadeInUp>
 
       {/* ============ TRIP SECTION ============ */}
       <Text style={styles.sectionLabel}>YOUR TRIP</Text>

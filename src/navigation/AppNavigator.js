@@ -25,6 +25,11 @@ const AppNavigator = () => {
         initialRouteName="Login"
         screenOptions={{
           headerShown: false,
+          animation: 'slide_from_right',
+          animationDuration: 350,
+          animationMatchesGesture: true,
+          gestureEnabled: true,
+          fullScreenGestureEnabled: true,
         }}
       >
         <Stack.Screen name="Login" component={Login} />

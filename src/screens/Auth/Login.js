@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  View,
   Text,
   TextInput,
   TouchableOpacity,
@@ -12,6 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loginDriver, setAuthToken } from '../../api';
 import { useAlert } from '../../components/AlertProvider';
+import { FadeInUp } from '../../components/Animations';
 import { C } from '../../theme';
 import { Hero, PrimaryButton, OutlineButton } from '../../components/ui';
 
@@ -74,21 +74,29 @@ const Login = () => {
       keyboardShouldPersistTaps="handled"
     >
       {/* HERO BAND */}
-      <Hero style={styles.hero}>
-        <Text style={styles.logo}>
-          Drive<Text style={styles.logoAccent}>Go</Text>
-        </Text>
-        <Text style={styles.partner}>Driver Partner</Text>
-      </Hero>
+      <FadeInUp>
+        <Hero style={styles.hero}>
+          <Text style={styles.logo}>
+            Drive<Text style={styles.logoAccent}>Go</Text>
+          </Text>
+          <Text style={styles.partner}>Driver Partner</Text>
+        </Hero>
+      </FadeInUp>
 
       {/* TITLE */}
-      <Text style={styles.welcome}>Welcome back,</Text>
-      <Text style={styles.title}>Driver! 👋</Text>
+      <FadeInUp delay={80}>
+        <Text style={styles.welcome}>Welcome back,</Text>
+      </FadeInUp>
+      <FadeInUp delay={110}>
+        <Text style={styles.title}>Driver! 👋</Text>
+      </FadeInUp>
 
-      <Text style={styles.subtitle}>Sign in to manage your trips</Text>
+      <FadeInUp delay={140}>
+        <Text style={styles.subtitle}>Sign in to manage your trips</Text>
+      </FadeInUp>
 
       {/* Phone Input */}
-      <View style={styles.inputContainer}>
+      <FadeInUp delay={190} style={styles.inputContainer}>
         <Icon name="phone" size={20} color={C.accent} />
         <TextInput
           placeholder="+91 98765 43210"
@@ -98,10 +106,10 @@ const Login = () => {
           value={mobileNumber}
           onChangeText={setMobileNumber}
         />
-      </View>
+      </FadeInUp>
 
       {/* Password Input */}
-      <View style={styles.inputContainer}>
+      <FadeInUp delay={240} style={styles.inputContainer}>
         <Icon name="lock" size={20} color={C.accent} />
         <TextInput
           placeholder="Password"
@@ -118,32 +126,40 @@ const Login = () => {
             color={C.textMuted}
           />
         </TouchableOpacity>
-      </View>
+      </FadeInUp>
 
       {/* Forgot Password */}
-      <TouchableOpacity
-        onPress={() => navigation.navigate('ForgotPassword')}
-      >
-        <Text style={styles.forgot}>Forgot Password?</Text>
-      </TouchableOpacity>
+      <FadeInUp delay={290}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('ForgotPassword')}
+        >
+          <Text style={styles.forgot}>Forgot Password?</Text>
+        </TouchableOpacity>
+      </FadeInUp>
 
       {/* Login Button */}
-      <PrimaryButton
-        title="Login"
-        icon="login"
-        loading={loading}
-        onPress={handleLogin}
-        style={styles.loginBtn}
-      />
+      <FadeInUp delay={340}>
+        <PrimaryButton
+          title="Login"
+          icon="login"
+          loading={loading}
+          onPress={handleLogin}
+          style={styles.loginBtn}
+        />
+      </FadeInUp>
 
       {/* Register */}
-      <Text style={styles.newDriver}>New driver?</Text>
+      <FadeInUp delay={400}>
+        <Text style={styles.newDriver}>New driver?</Text>
+      </FadeInUp>
 
-      <OutlineButton
-        title="Register as Driver"
-        icon="person-add"
-        onPress={() => navigation.navigate('Register')}
-      />
+      <FadeInUp delay={440}>
+        <OutlineButton
+          title="Register as Driver"
+          icon="person-add"
+          onPress={() => navigation.navigate('Register')}
+        />
+      </FadeInUp>
     </ScrollView>
   );
 };

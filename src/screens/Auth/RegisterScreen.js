@@ -11,6 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { registerDriver, setAuthToken } from '../../api';
 import { useAlert } from '../../components/AlertProvider';
+import { FadeInUp } from '../../components/Animations';
 import { C } from '../../theme';
 import { Hero, PrimaryButton } from '../../components/ui';
 
@@ -77,98 +78,120 @@ const RegisterScreen = () => {
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
-        <Text style={styles.backText}>← Back to login</Text>
-      </TouchableOpacity>
+      <FadeInUp>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+          <Text style={styles.backText}>← Back to login</Text>
+        </TouchableOpacity>
+      </FadeInUp>
 
-      <Hero style={styles.hero}>
-        <Text style={styles.heroTitle}>Become a Driver Partner</Text>
-        <Text style={styles.heroSubtitle}>Fill in your details to get started</Text>
-      </Hero>
+      <FadeInUp delay={60}>
+        <Hero style={styles.hero}>
+          <Text style={styles.heroTitle}>Become a Driver Partner</Text>
+          <Text style={styles.heroSubtitle}>Fill in your details to get started</Text>
+        </Hero>
+      </FadeInUp>
 
       {/* ACCOUNT */}
-      <Text style={styles.sectionTitle}>Account details</Text>
+      <FadeInUp delay={110}>
+        <Text style={styles.sectionTitle}>Account details</Text>
+      </FadeInUp>
 
-      <TextInput
-        placeholder="Full name"
-        placeholderTextColor={C.textMuted}
-        style={styles.input}
-        value={form.fullName}
-        onChangeText={set('fullName')}
-      />
+      <FadeInUp delay={140}>
+        <TextInput
+          placeholder="Full name"
+          placeholderTextColor={C.textMuted}
+          style={styles.input}
+          value={form.fullName}
+          onChangeText={set('fullName')}
+        />
+      </FadeInUp>
 
-      <TextInput
-        placeholder="Email"
-        placeholderTextColor={C.textMuted}
-        style={styles.input}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        value={form.email}
-        onChangeText={set('email')}
-      />
+      <FadeInUp delay={180}>
+        <TextInput
+          placeholder="Email"
+          placeholderTextColor={C.textMuted}
+          style={styles.input}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          value={form.email}
+          onChangeText={set('email')}
+        />
+      </FadeInUp>
 
-      <TextInput
-        placeholder="Password"
-        placeholderTextColor={C.textMuted}
-        style={styles.input}
-        secureTextEntry
-        value={form.password}
-        onChangeText={set('password')}
-      />
+      <FadeInUp delay={220}>
+        <TextInput
+          placeholder="Password"
+          placeholderTextColor={C.textMuted}
+          style={styles.input}
+          secureTextEntry
+          value={form.password}
+          onChangeText={set('password')}
+        />
+      </FadeInUp>
 
       {/* DRIVER DETAILS */}
-      <Text style={styles.sectionTitle}>Driver details</Text>
+      <FadeInUp delay={270}>
+        <Text style={styles.sectionTitle}>Driver details</Text>
+      </FadeInUp>
 
-      <TextInput
-        placeholder="Phone number"
-        placeholderTextColor={C.textMuted}
-        style={styles.input}
-        keyboardType="phone-pad"
-        value={form.mobileNumber}
-        onChangeText={set('mobileNumber')}
-      />
-
-      <View style={styles.row}>
+      <FadeInUp delay={300}>
         <TextInput
-          placeholder="City"
+          placeholder="Phone number"
           placeholderTextColor={C.textMuted}
-          style={[styles.input, styles.half]}
-          value={form.city}
-          onChangeText={set('city')}
+          style={styles.input}
+          keyboardType="phone-pad"
+          value={form.mobileNumber}
+          onChangeText={set('mobileNumber')}
         />
-        <TextInput
-          placeholder="State"
-          placeholderTextColor={C.textMuted}
-          style={[styles.input, styles.half]}
-          value={form.state}
-          onChangeText={set('state')}
-        />
-      </View>
+      </FadeInUp>
 
-      <Text style={styles.label}>Vehicle type</Text>
-      <View style={styles.typeRow}>
-        {['Hatchback', 'Sedan', 'SUV', 'MUV', 'Bike'].map(type => (
-          <TouchableOpacity
-            key={type}
-            style={[styles.typeChip, form.vehicleType === type && styles.typeChipActive]}
-            onPress={() => setForm({ ...form, vehicleType: type })}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[styles.typeChipText, form.vehicleType === type && styles.typeChipTextActive]}
+      <FadeInUp delay={340}>
+        <View style={styles.row}>
+          <TextInput
+            placeholder="City"
+            placeholderTextColor={C.textMuted}
+            style={[styles.input, styles.half]}
+            value={form.city}
+            onChangeText={set('city')}
+          />
+          <TextInput
+            placeholder="State"
+            placeholderTextColor={C.textMuted}
+            style={[styles.input, styles.half]}
+            value={form.state}
+            onChangeText={set('state')}
+          />
+        </View>
+      </FadeInUp>
+
+      <FadeInUp delay={390}>
+        <Text style={styles.label}>Vehicle type</Text>
+        <View style={styles.typeRow}>
+          {['Hatchback', 'Sedan', 'SUV', 'MUV', 'Bike'].map(type => (
+            <TouchableOpacity
+              key={type}
+              style={[styles.typeChip, form.vehicleType === type && styles.typeChipActive]}
+              onPress={() => setForm({ ...form, vehicleType: type })}
+              activeOpacity={0.8}
             >
-              {type}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+              <Text
+                style={[styles.typeChipText, form.vehicleType === type && styles.typeChipTextActive]}
+              >
+                {type}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </FadeInUp>
 
-      <PrimaryButton
-        title="Next — Upload Documents"
-        icon="arrow-forward"
-        onPress={handleRegister}
-        style={styles.button}
-      />
+      <FadeInUp delay={450}>
+        <PrimaryButton
+          title="Next — Upload Documents"
+          icon="arrow-forward"
+          onPress={handleRegister}
+          style={styles.button}
+        />
+      </FadeInUp>
     </ScrollView>
   );
 };
