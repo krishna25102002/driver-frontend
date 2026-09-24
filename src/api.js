@@ -2,7 +2,8 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uploadFiles as nativeUploadFiles } from '@dr.pogodin/react-native-fs';
 
-const API_BASE_URL = 'http://192.168.0.7:5000'; // Change this to your backend URL
+// const API_BASE_URL = 'http://192.168.0.7:5000'; // Change this to your backend URL
+const API_BASE_URL = 'https://api.krishnan8nyoutube.online';
 
 // Socket.IO connects to the same origin. Use the plain base URL (not the axios
 // instance) so the socket client manages its own auth/lifecycle.
